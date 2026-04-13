@@ -154,7 +154,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex h-screen items-center justify-center bg-slate-50 p-4 text-center">
+        <div className="flex h-screen items-center justify-center bg-swamp-50 p-4 text-center">
           <Card className="max-w-md border-red-200">
             <CardHeader>
               <div className="mx-auto bg-red-100 w-12 h-12 rounded-full flex items-center justify-center mb-2">
@@ -164,7 +164,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
               <CardDescription>Приложение столкнулось с неожиданной ошибкой.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="bg-slate-100 p-3 rounded text-xs font-mono text-left overflow-auto max-h-40">
+              <div className="bg-swamp-100 p-3 rounded text-xs font-mono text-left overflow-auto max-h-40">
                 {this.state.error?.message}
               </div>
             </CardContent>
@@ -419,9 +419,19 @@ function App() {
     recognition.lang = 'ru-RU';
     recognition.onstart = () => setIsRecording(true);
     recognition.onend = () => setIsRecording(false);
-    recognition.onresult = (event: any) => {
+    recognition.onresult = async (event: any) => {
       const transcript = event.results[0][0].transcript;
-      setNewNoteContent(prev => prev + (prev ? ' ' : '') + transcript);
+      if (transcript.trim() && user) {
+        try {
+          await addDoc(collection(db, 'notes'), {
+            content: transcript,
+            userId: user.uid,
+            createdAt: serverTimestamp(),
+          });
+        } catch (error) {
+          console.error("Error adding voice note: ", error);
+        }
+      }
     };
     recognition.start();
   };
@@ -504,7 +514,7 @@ function App() {
   if (!isAuthReady) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" /></div>;
 
   if (!user) return (
-    <div className="flex h-screen items-center justify-center bg-slate-50">
+    <div className="flex h-screen items-center justify-center bg-swamp-50">
       <Card className="w-[400px] shadow-2xl border-none">
         <CardHeader className="text-center">
           <div className="mx-auto bg-primary w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
@@ -529,9 +539,9 @@ function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-300">
+    <div className="min-h-screen bg-swamp-50/50 dark:bg-swamp-950 flex flex-col font-sans transition-colors duration-300">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 w-full border-b bg-white/80 dark:bg-swamp-900/80 backdrop-blur-md">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="bg-primary p-1.5 rounded-lg shadow-sm">
@@ -541,10 +551,10 @@ function App() {
           </div>
 
           <div className="flex-1 max-w-md relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -transwamp-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Поиск..." 
-              className="pl-10 bg-slate-100/50 dark:bg-slate-800/50 border-none focus-visible:ring-1"
+              className="pl-10 bg-swamp-100/50 dark:bg-swamp-800/50 border-none focus-visible:ring-1"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -552,7 +562,7 @@ function App() {
           
           <div className="flex items-center gap-2 sm:gap-3">
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full">
-              {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
+              {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-swamp-600" />}
             </Button>
             <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full">
               <LogOut className="w-5 h-5 text-muted-foreground" />
@@ -574,16 +584,16 @@ function App() {
             </CardHeader>
             <CardContent>
               {dailyBriefing ? (
-                <p className="text-sm text-slate-700 dark:text-slate-300 italic leading-relaxed">"{dailyBriefing}"</p>
+                <p className="text-sm text-swamp-700 dark:text-swamp-300 italic leading-relaxed">"{dailyBriefing}"</p>
               ) : (
-                <Button variant="outline" size="sm" className="w-full gap-2 dark:border-slate-700 dark:text-slate-300" onClick={getDailyBriefing} disabled={isAiLoading}>
+                <Button variant="outline" size="sm" className="w-full gap-2 dark:border-swamp-700 dark:text-swamp-300" onClick={getDailyBriefing} disabled={isAiLoading}>
                   {isAiLoading ? "Думаю..." : "Получить напутствие"}
                 </Button>
               )}
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm dark:bg-slate-900">
+          <Card className="border-none shadow-sm dark:bg-swamp-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2 dark:text-white">
                 <StickyNote className="w-4 h-4 text-amber-500" />
@@ -595,7 +605,7 @@ function App() {
                 <div className="relative flex-1">
                   <Input 
                     placeholder="Записать..." 
-                    className="text-xs h-8 pr-8 dark:bg-slate-800 dark:border-slate-700"
+                    className="text-xs h-8 pr-8 dark:bg-swamp-800 dark:border-swamp-700"
                     value={newNoteContent}
                     onChange={(e) => setNewNoteContent(e.target.value)}
                   />
@@ -603,8 +613,8 @@ function App() {
                     type="button"
                     onClick={startVoiceInput}
                     className={cn(
-                      "absolute right-2 top-1/2 -translate-y-1/2 transition-colors",
-                      isRecording ? "text-red-500 animate-pulse" : "text-slate-400 hover:text-primary"
+                      "absolute right-2 top-1/2 -transwamp-y-1/2 transition-colors",
+                      isRecording ? "text-red-500 animate-pulse" : "text-swamp-400 hover:text-primary"
                     )}
                   >
                     {isRecording ? <Mic className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
@@ -632,7 +642,7 @@ function App() {
         <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6">
-              <TabsList className="bg-slate-200/50 dark:bg-slate-800/50 p-1">
+              <TabsList className="bg-swamp-200/50 dark:bg-swamp-800/50 p-1">
                 <TabsTrigger value="tasks" className="gap-2 flex-1 sm:flex-none"><CheckCircle2 className="w-4 h-4" /> Задачи</TabsTrigger>
                 <TabsTrigger value="algorithms" className="gap-2 flex-1 sm:flex-none"><BookOpen className="w-4 h-4" /> База знаний</TabsTrigger>
                 <TabsTrigger value="memory" className="gap-2 flex-1 sm:flex-none"><History className="w-4 h-4" /> Спросить память</TabsTrigger>
@@ -641,25 +651,25 @@ function App() {
               {activeTab === 'tasks' && (
                 <Dialog open={isTaskModalOpen} onOpenChange={setIsTaskModalOpen}>
                   <DialogTrigger render={<Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto"><Plus className="w-4 h-4" /> Создать задачу</Button>} />
-                  <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
+                  <DialogContent className="sm:max-w-[500px] dark:bg-swamp-900 dark:border-swamp-800">
                     <form onSubmit={handleCreateTask}>
                       <DialogHeader><DialogTitle className="dark:text-white">Новая задача</DialogTitle></DialogHeader>
                       <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
-                          <Label className="dark:text-slate-300">Название</Label>
-                          <Input className="dark:bg-slate-800 dark:border-slate-700" value={taskForm.title} onChange={(e) => setTaskForm({...taskForm, title: e.target.value})} required />
+                          <Label className="dark:text-swamp-300">Название</Label>
+                          <Input className="dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.title} onChange={(e) => setTaskForm({...taskForm, title: e.target.value})} required />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="grid gap-2">
-                            <Label className="dark:text-slate-300">Срок</Label>
+                            <Label className="dark:text-swamp-300">Срок</Label>
                             <Popover>
-                              <PopoverTrigger render={<Button variant="outline" className="w-full justify-start dark:border-slate-700 dark:text-slate-300"><CalendarIcon className="mr-2 h-4 w-4" /> {taskForm.dueDate ? format(taskForm.dueDate, "PPP", { locale: ru }) : "Выбрать"}</Button>} />
-                              <PopoverContent className="w-auto p-0 dark:bg-slate-900 dark:border-slate-800"><Calendar mode="single" selected={taskForm.dueDate} onSelect={(d) => setTaskForm({...taskForm, dueDate: d})} locale={ru} /></PopoverContent>
+                              <PopoverTrigger render={<Button variant="outline" className="w-full justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4" /> {taskForm.dueDate ? format(taskForm.dueDate, "PPP", { locale: ru }) : "Выбрать"}</Button>} />
+                              <PopoverContent className="w-auto p-0 dark:bg-swamp-900 dark:border-swamp-800"><Calendar mode="single" selected={taskForm.dueDate} onSelect={(d) => setTaskForm({...taskForm, dueDate: d})} locale={ru} /></PopoverContent>
                             </Popover>
                           </div>
                           <div className="grid gap-2">
-                            <Label className="dark:text-slate-300">Приоритет</Label>
-                            <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm dark:border-slate-700 dark:text-slate-300" value={taskForm.priority} onChange={(e) => setTaskForm({...taskForm, priority: e.target.value as any})}>
+                            <Label className="dark:text-swamp-300">Приоритет</Label>
+                            <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm dark:border-swamp-700 dark:text-swamp-300" value={taskForm.priority} onChange={(e) => setTaskForm({...taskForm, priority: e.target.value as any})}>
                               <option value="low">Низкий</option>
                               <option value="medium">Средний</option>
                               <option value="high">Высокий</option>
@@ -668,15 +678,15 @@ function App() {
                         </div>
                         <div className="grid gap-2">
                           <div className="flex justify-between items-center">
-                            <Label className="dark:text-slate-300">Подзадачи</Label>
+                            <Label className="dark:text-swamp-300">Подзадачи</Label>
                             <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-primary" onClick={generateSubtasks} disabled={isAiLoading}>
                               <Sparkles className="w-3 h-3" /> {isAiLoading ? "Генерация..." : "AI Подзадачи"}
                             </Button>
                           </div>
-                          <div className="space-y-2 max-h-[150px] overflow-y-auto p-2 border rounded-md bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
+                          <div className="space-y-2 max-h-[150px] overflow-y-auto p-2 border rounded-md bg-swamp-50 dark:bg-swamp-800 dark:border-swamp-700">
                             {taskForm.subtasks.map((st, i) => (
-                              <div key={i} className="flex items-center gap-2 text-sm dark:text-slate-300">
-                                <Circle className="w-3 h-3 text-slate-400" /> {st.title}
+                              <div key={i} className="flex items-center gap-2 text-sm dark:text-swamp-300">
+                                <Circle className="w-3 h-3 text-swamp-400" /> {st.title}
                               </div>
                             ))}
                           </div>
@@ -691,10 +701,10 @@ function App() {
 
             <TabsContent value="tasks" className="space-y-6 outline-none">
               {/* Weekly Calendar View */}
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="bg-white dark:bg-swamp-900 rounded-xl border border-swamp-200 dark:border-swamp-800 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-swamp-100 dark:border-swamp-800">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 capitalize">
+                    <h2 className="text-lg font-semibold text-swamp-800 dark:text-swamp-100 capitalize">
                       {format(selectedDate, 'LLLL yyyy', { locale: ru })}
                     </h2>
                   </div>
@@ -710,7 +720,7 @@ function App() {
                     </Button>
                   </div>
                 </div>
-                <div className="grid grid-cols-7 divide-x divide-slate-100 dark:divide-slate-800">
+                <div className="grid grid-cols-7 divide-x divide-swamp-100 dark:divide-swamp-800">
                   {currentWeekDays.map((day) => {
                     const isSelected = isSameDay(day, selectedDate);
                     const isTodayDate = isToday(day);
@@ -719,17 +729,17 @@ function App() {
                         key={day.toISOString()} 
                         onClick={() => setSelectedDate(day)} 
                         className={cn(
-                          "flex flex-col items-center justify-center py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50",
-                          isSelected && "bg-slate-50 dark:bg-slate-800/50"
+                          "flex flex-col items-center justify-center py-3 transition-colors hover:bg-swamp-50 dark:hover:bg-swamp-800/50",
+                          isSelected && "bg-swamp-50 dark:bg-swamp-800/50"
                         )}
                       >
-                        <span className="text-[10px] uppercase font-medium text-slate-500 dark:text-slate-400 mb-1">
+                        <span className="text-[10px] uppercase font-medium text-swamp-500 dark:text-swamp-400 mb-1">
                           {format(day, 'EEEEEE', { locale: ru })}
                         </span>
                         <div className={cn(
                           "w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium",
                           isSelected ? "bg-primary text-primary-foreground" : 
-                          isTodayDate ? "text-primary bg-primary/10" : "text-slate-700 dark:text-slate-300"
+                          isTodayDate ? "text-primary bg-primary/10" : "text-swamp-700 dark:text-swamp-300"
                         )}>
                           {format(day, 'd')}
                         </div>
@@ -741,19 +751,19 @@ function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"><Circle className="w-4 h-4 text-amber-500" /> В работе</h3>
+                  <h3 className="font-bold text-swamp-800 dark:text-swamp-200 flex items-center gap-2"><Circle className="w-4 h-4 text-amber-500" /> В работе</h3>
                   <div className="space-y-3">
                     {filteredTasks.filter(t => t.status !== 'done').map(task => (
-                      <Card key={task.id} className="group hover:shadow-md transition-all border-l-4 border-l-primary dark:bg-slate-900 dark:border-slate-800">
+                      <Card key={task.id} className="group hover:shadow-md transition-all border-l-4 border-l-primary dark:bg-swamp-900 dark:border-swamp-800">
                         <CardContent className="p-4 flex items-start gap-3">
-                          <Checkbox checked={false} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1 dark:border-slate-700" />
+                          <Checkbox checked={false} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1 dark:border-swamp-700" />
                           <div className="flex-1">
                             <h4 className="font-semibold text-sm dark:text-white">{task.title}</h4>
                             {task.subtasks && task.subtasks.length > 0 && (
                               <div className="mt-2 space-y-1">
                                 {task.subtasks.map((st, i) => (
-                                  <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground dark:text-slate-400">
-                                    <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" /> {st.title}
+                                  <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground dark:text-swamp-400">
+                                    <div className="w-1 h-1 rounded-full bg-swamp-300 dark:bg-swamp-600" /> {st.title}
                                   </div>
                                 ))}
                               </div>
@@ -767,13 +777,13 @@ function App() {
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500" /> Завершено</h3>
+                  <h3 className="font-bold text-swamp-800 dark:text-swamp-200 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500" /> Завершено</h3>
                   <div className="space-y-3">
                     {filteredTasks.filter(t => t.status === 'done').map(task => (
-                      <Card key={task.id} className="bg-slate-100/50 dark:bg-slate-900/50 border-none opacity-70">
+                      <Card key={task.id} className="bg-swamp-100/50 dark:bg-swamp-900/50 border-none opacity-70">
                         <CardContent className="p-3 flex items-start gap-3">
                           <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1" />
-                          <span className="text-sm line-through text-muted-foreground dark:text-slate-500">{task.title}</span>
+                          <span className="text-sm line-through text-muted-foreground dark:text-swamp-500">{task.title}</span>
                         </CardContent>
                       </Card>
                     ))}
@@ -783,18 +793,18 @@ function App() {
             </TabsContent>
 
             <TabsContent value="algorithms" className="grid grid-cols-1 lg:grid-cols-3 gap-6 outline-none">
-              <Card className="lg:col-span-1 border-none shadow-sm h-fit dark:bg-slate-900">
+              <Card className="lg:col-span-1 border-none shadow-sm h-fit dark:bg-swamp-900">
                 <CardHeader><CardTitle className="text-lg dark:text-white">Новый алгоритм</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                  <Input placeholder="Название..." className="dark:bg-slate-800 dark:border-slate-700 dark:text-white" value={newAlgoTitle} onChange={(e) => setNewAlgoTitle(e.target.value)} />
-                  <Textarea placeholder="Markdown контент..." className="min-h-[200px] text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white" value={newAlgoContent} onChange={(e) => setNewAlgoContent(e.target.value)} />
+                  <Input placeholder="Название..." className="dark:bg-swamp-800 dark:border-swamp-700 dark:text-white" value={newAlgoTitle} onChange={(e) => setNewAlgoTitle(e.target.value)} />
+                  <Textarea placeholder="Markdown контент..." className="min-h-[200px] text-sm dark:bg-swamp-800 dark:border-swamp-700 dark:text-white" value={newAlgoContent} onChange={(e) => setNewAlgoContent(e.target.value)} />
                   <Button onClick={addAlgorithm} className="w-full">Сохранить</Button>
                 </CardContent>
               </Card>
               <div className="lg:col-span-2 space-y-4">
                 {filteredAlgos.map(algo => (
-                  <Card key={algo.id} className="border-none shadow-sm overflow-hidden dark:bg-slate-900">
-                    <CardHeader className="bg-slate-50/50 dark:bg-slate-800/50 flex flex-row items-center justify-between py-3">
+                  <Card key={algo.id} className="border-none shadow-sm overflow-hidden dark:bg-swamp-900">
+                    <CardHeader className="bg-swamp-50/50 dark:bg-swamp-800/50 flex flex-row items-center justify-between py-3">
                       <CardTitle className="text-md dark:text-white">{algo.title}</CardTitle>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteDoc(doc(db, 'algorithms', algo.id))}><Trash2 className="w-4 h-4" /></Button>
                     </CardHeader>
@@ -807,8 +817,8 @@ function App() {
             </TabsContent>
 
             <TabsContent value="memory" className="outline-none">
-              <Card className="border-none shadow-sm dark:bg-slate-900 h-[600px] flex flex-col">
-                <CardHeader className="border-b dark:border-slate-800">
+              <Card className="border-none shadow-sm dark:bg-swamp-900 h-[600px] flex flex-col">
+                <CardHeader className="border-b dark:border-swamp-800">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <BrainCircuit className="w-5 h-5 text-primary" />
                     Ваша цифровая память
@@ -834,7 +844,7 @@ function App() {
                             "max-w-[80%] p-3 rounded-2xl text-sm shadow-sm",
                             msg.role === 'user' 
                               ? "bg-primary text-white rounded-tr-none" 
-                              : "bg-slate-100 dark:bg-slate-800 dark:text-slate-200 rounded-tl-none"
+                              : "bg-swamp-100 dark:bg-swamp-800 dark:text-swamp-200 rounded-tl-none"
                           )}>
                             {msg.content}
                           </div>
@@ -842,22 +852,22 @@ function App() {
                       ))}
                       {isChatLoading && (
                         <div className="flex justify-start">
-                          <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none shadow-sm">
+                          <div className="bg-swamp-100 dark:bg-swamp-800 p-3 rounded-2xl rounded-tl-none shadow-sm">
                             <div className="flex gap-1">
-                              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
-                              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                              <div className="w-1.5 h-1.5 bg-swamp-400 rounded-full animate-bounce" />
+                              <div className="w-1.5 h-1.5 bg-swamp-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                              <div className="w-1.5 h-1.5 bg-swamp-400 rounded-full animate-bounce [animation-delay:0.4s]" />
                             </div>
                           </div>
                         </div>
                       )}
                     </div>
                   </ScrollArea>
-                  <div className="p-4 border-t dark:border-slate-800">
+                  <div className="p-4 border-t dark:border-swamp-800">
                     <form onSubmit={askMemory} className="flex gap-2">
                       <Input 
                         placeholder="Спросить у памяти..." 
-                        className="dark:bg-slate-800 dark:border-slate-700"
+                        className="dark:bg-swamp-800 dark:border-swamp-700"
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         disabled={isChatLoading}
@@ -875,7 +885,7 @@ function App() {
 
         {/* Right Sidebar / Upcoming Tasks */}
         <aside className="lg:col-span-3 space-y-6 order-3 hidden lg:block">
-          <Card className="border-none shadow-sm dark:bg-slate-900 sticky top-24">
+          <Card className="border-none shadow-sm dark:bg-swamp-900 sticky top-24">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2 dark:text-white">
                 <CalendarIcon className="w-4 h-4 text-primary" />
@@ -886,20 +896,20 @@ function App() {
               <ScrollArea className="h-[calc(100vh-200px)]">
                 <div className="space-y-3 pr-3">
                   {upcomingTasks.length > 0 ? upcomingTasks.map(task => (
-                    <div key={task.id} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => {
+                    <div key={task.id} className="p-3 bg-swamp-50 dark:bg-swamp-800/50 rounded-lg border border-swamp-100 dark:border-swamp-800 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => {
                       if (task.dueDate) setSelectedDate(task.dueDate.toDate());
                       setActiveTab('tasks');
                     }}>
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-sm font-medium dark:text-slate-200 line-clamp-2">{task.title}</h4>
+                        <h4 className="text-sm font-medium dark:text-swamp-200 line-clamp-2">{task.title}</h4>
                       </div>
-                      <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                      <div className="mt-2 flex items-center gap-2 text-[10px] text-swamp-500 dark:text-swamp-400">
                         <CalendarIcon className="w-3 h-3" />
                         {task.dueDate ? format(task.dueDate.toDate(), 'd MMMM', { locale: ru }) : 'Без даты'}
                       </div>
                     </div>
                   )) : (
-                    <p className="text-xs text-slate-500 text-center py-4">Нет предстоящих задач</p>
+                    <p className="text-xs text-swamp-500 text-center py-4">Нет предстоящих задач</p>
                   )}
                 </div>
               </ScrollArea>
