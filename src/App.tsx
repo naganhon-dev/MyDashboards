@@ -326,8 +326,9 @@ function App() {
       const text = response.text;
       const suggested = text.split(',').map(s => ({ title: s.trim(), done: false }));
       setTaskForm(prev => ({ ...prev, subtasks: [...prev.subtasks, ...suggested] }));
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert(`Ошибка AI: ${error.message}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -346,8 +347,9 @@ function App() {
         contents: `Ты - персональный ассистент. Вот список задач на сегодня:\n${taskList}\nДай краткое, мотивирующее напутствие на день (2-3 предложения).`,
       });
       setDailyBriefing(response.text);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setDailyBriefing(`Ошибка загрузки: ${error.message}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -395,9 +397,9 @@ function App() {
       });
 
       setChatMessages(prev => [...prev, { role: 'ai', content: response.text }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setChatMessages(prev => [...prev, { role: 'ai', content: "Извините, произошла ошибка при обращении к памяти." }]);
+      setChatMessages(prev => [...prev, { role: 'ai', content: `Ошибка API: ${error.message || 'Неизвестная ошибка'}. Убедитесь, что ключ правильный и у него есть доступ к моделям.` }]);
     } finally {
       setIsChatLoading(false);
     }
