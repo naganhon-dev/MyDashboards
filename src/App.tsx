@@ -481,6 +481,17 @@ function App() {
     });
   }, [tasks, selectedDate, searchQuery]);
 
+  const upcomingTasks = useMemo(() => {
+    const today = startOfToday();
+    return tasks
+      .filter(t => t.status !== 'done' && t.dueDate && t.dueDate.toDate() >= today)
+      .sort((a, b) => {
+        if (!a.dueDate || !b.dueDate) return 0;
+        return a.dueDate.toDate().getTime() - b.dueDate.toDate().getTime();
+      })
+      .slice(0, 10);
+  }, [tasks]);
+
   const filteredAlgos = useMemo(() => {
     return algorithms.filter(a => 
       a.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -618,7 +629,7 @@ function App() {
         </aside>
 
         {/* Main Content */}
-        <div className="lg:col-span-9 space-y-6 order-1 lg:order-2">
+        <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6">
               <TabsList className="bg-slate-200/50 dark:bg-slate-800/50 p-1">
@@ -861,6 +872,40 @@ function App() {
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Right Sidebar / Upcoming Tasks */}
+        <aside className="lg:col-span-3 space-y-6 order-3 hidden lg:block">
+          <Card className="border-none shadow-sm dark:bg-slate-900 sticky top-24">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 dark:text-white">
+                <CalendarIcon className="w-4 h-4 text-primary" />
+                Предстоящие задачи
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[calc(100vh-200px)]">
+                <div className="space-y-3 pr-3">
+                  {upcomingTasks.length > 0 ? upcomingTasks.map(task => (
+                    <div key={task.id} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => {
+                      if (task.dueDate) setSelectedDate(task.dueDate.toDate());
+                      setActiveTab('tasks');
+                    }}>
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="text-sm font-medium dark:text-slate-200 line-clamp-2">{task.title}</h4>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                        <CalendarIcon className="w-3 h-3" />
+                        {task.dueDate ? format(task.dueDate.toDate(), 'd MMMM', { locale: ru }) : 'Без даты'}
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="text-xs text-slate-500 text-center py-4">Нет предстоящих задач</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </aside>
       </main>
     </div>
   );
