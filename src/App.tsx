@@ -78,7 +78,7 @@ import {
   BrainCircuit
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { format, addDays, startOfToday, isSameDay, eachDayOfInterval, isToday } from 'date-fns';
+import { format, addDays, startOfToday, isSameDay, eachDayOfInterval, isToday, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -243,12 +243,16 @@ function App() {
   const [newAlgoContent, setNewAlgoContent] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
 
-  // Date Carousel
-  const days = useMemo(() => {
-    const start = addDays(startOfToday(), -7);
-    const end = addDays(startOfToday(), 21);
+  // Weekly Calendar
+  const currentWeekDays = useMemo(() => {
+    const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+    const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
     return eachDayOfInterval({ start, end });
-  }, []);
+  }, [selectedDate]);
+
+  const handlePrevWeek = () => setSelectedDate(prev => subWeeks(prev, 1));
+  const handleNextWeek = () => setSelectedDate(prev => addWeeks(prev, 1));
+  const handleToday = () => setSelectedDate(startOfToday());
 
   // --- Auth ---
 
@@ -675,14 +679,53 @@ function App() {
             </div>
 
             <TabsContent value="tasks" className="space-y-6 outline-none">
-              {/* Date Carousel */}
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {days.map((day) => (
-                  <button key={day.toISOString()} onClick={() => setSelectedDate(day)} className={cn("flex flex-col items-center justify-center min-w-[60px] h-16 rounded-xl transition-all border", isSameDay(day, selectedDate) ? "bg-primary text-white border-primary shadow-md" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800")}>
-                    <span className="text-[10px] uppercase font-bold opacity-70">{format(day, 'EEE', { locale: ru })}</span>
-                    <span className="text-lg font-bold">{format(day, 'd')}</span>
-                  </button>
-                ))}
+              {/* Weekly Calendar View */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 capitalize">
+                      {format(selectedDate, 'LLLL yyyy', { locale: ru })}
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handlePrevWeek}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 text-xs font-medium" onClick={handleToday}>
+                      Сегодня
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleNextWeek}>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 divide-x divide-slate-100 dark:divide-slate-800">
+                  {currentWeekDays.map((day) => {
+                    const isSelected = isSameDay(day, selectedDate);
+                    const isTodayDate = isToday(day);
+                    return (
+                      <button 
+                        key={day.toISOString()} 
+                        onClick={() => setSelectedDate(day)} 
+                        className={cn(
+                          "flex flex-col items-center justify-center py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50",
+                          isSelected && "bg-slate-50 dark:bg-slate-800/50"
+                        )}
+                      >
+                        <span className="text-[10px] uppercase font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          {format(day, 'EEEEEE', { locale: ru })}
+                        </span>
+                        <div className={cn(
+                          "w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium",
+                          isSelected ? "bg-primary text-primary-foreground" : 
+                          isTodayDate ? "text-primary bg-primary/10" : "text-slate-700 dark:text-slate-300"
+                        )}>
+                          {format(day, 'd')}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
