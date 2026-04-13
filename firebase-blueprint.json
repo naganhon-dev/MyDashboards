@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Task",
+      "description": "A work task to be completed.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the task." },
+        "description": { "type": "string", "description": "Detailed description of the task." },
+        "status": { "type": "string", "enum": ["todo", "in-progress", "done"], "description": "Current status of the task." },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"], "description": "Priority level." },
+        "userId": { "type": "string", "description": "The ID of the user who owns this task." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the task was created." },
+        "dueDate": { "type": "string", "format": "date-time", "description": "When the task is due." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags for categorization." },
+        "subtasks": { "type": "array", "items": { "type": "object", "properties": { "title": { "type": "string" }, "done": { "type": "boolean" } } }, "description": "AI-generated or manual subtasks." }
+      },
+      "required": ["title", "status", "userId", "createdAt"]
+    },
+    "Algorithm": {
+      "title": "Algorithm",
+      "description": "A standard operating procedure or sequence of actions.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the algorithm." },
+        "content": { "type": "string", "description": "The steps or content of the algorithm (Markdown supported)." },
+        "userId": { "type": "string", "description": "The ID of the user who owns this algorithm." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the algorithm was created." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags for categorization." }
+      },
+      "required": ["title", "content", "userId", "createdAt"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "A quick thought or piece of information.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The content of the note." },
+        "userId": { "type": "string", "description": "The ID of the user." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the note was created." }
+      },
+      "required": ["content", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Collection of user tasks."
+    },
+    "/algorithms/{algorithmId}": {
+      "schema": "Algorithm",
+      "description": "Collection of user algorithms/SOPs."
+    },
+    "/notes/{noteId}": {
+      "schema": "Note",
+      "description": "Quick notes/Inbox."
+    }
+  }
+}

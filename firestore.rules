@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: tasks
+    // Document ID: {taskId}
+    // Fields:
+    //   - title: string (required, 1-200 chars)
+    //   - description: string (optional, 0-2000 chars)
+    //   - status: string (required, enum: ['todo', 'in-progress', 'done'])
+    //   - priority: string (optional, enum: ['low', 'medium', 'high'])
+    //   - userId: string (required, matches auth.uid)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: algorithms
+    // Document ID: {algorithmId}
+    // Fields:
+    //   - title: string (required, 1-200 chars)
+    //   - content: string (required, 1-10000 chars)
+    //   - userId: string (required, matches auth.uid)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'status', 'userId', 'createdAt']) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.status in ['todo', 'in-progress', 'done'] &&
+             data.userId == request.auth.uid &&
+             data.createdAt is timestamp &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('priority' in data) || (data.priority in ['low', 'medium', 'high'])) &&
+             (!('dueDate' in data) || (data.dueDate is timestamp || data.dueDate == null)) &&
+             (!('tags' in data) || (data.tags is list)) &&
+             (!('subtasks' in data) || (data.subtasks is list));
+    }
+
+    function isValidAlgorithm(data) {
+      return data.keys().hasAll(['title', 'content', 'userId', 'createdAt']) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 10000 &&
+             data.userId == request.auth.uid &&
+             data.createdAt is timestamp &&
+             (!('tags' in data) || (data.tags is list));
+    }
+
+    function isValidNote(data) {
+      return data.keys().hasAll(['content', 'userId', 'createdAt']) &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 5000 &&
+             data.userId == request.auth.uid &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /tasks/{taskId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidTask(request.resource.data);
+      allow update: if isDocOwner() && isValidTask(request.resource.data) && 
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isDocOwner();
+    }
+
+    match /algorithms/{algorithmId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidAlgorithm(request.resource.data);
+      allow update: if isDocOwner() && isValidAlgorithm(request.resource.data) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isDocOwner();
+    }
+
+    match /notes/{noteId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidNote(request.resource.data);
+      allow update: if isDocOwner() && isValidNote(request.resource.data) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isDocOwner();
+    }
+  }
+}
