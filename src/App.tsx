@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   collection, 
   query, 
@@ -120,11 +120,73 @@ interface Note {
 }
 
 // --- AI Setup ---
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let genAI: GoogleGenAI | null = null;
+const getGenAI = () => {
+  if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn("GEMINI_API_KEY is not defined. AI features will be disabled.");
+      return null;
+    }
+    genAI = new GoogleGenAI({ apiKey });
+  }
+  return genAI;
+};
+
+// --- Error Boundary ---
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-slate-50 p-4 text-center">
+          <Card className="max-w-md border-red-200">
+            <CardHeader>
+              <div className="mx-auto bg-red-100 w-12 h-12 rounded-full flex items-center justify-center mb-2">
+                <AlertCircle className="text-red-600 w-6 h-6" />
+              </div>
+              <CardTitle className="text-red-600">Что-то пошло не так</CardTitle>
+              <CardDescription>Приложение столкнулось с неожиданной ошибкой.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-slate-100 p-3 rounded text-xs font-mono text-left overflow-auto max-h-40">
+                {this.state.error?.message}
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={() => window.location.reload()} className="w-full">Перезагрузить страницу</Button>
+            </CardFooter>
+          </Card>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // --- Components ---
 
-export default function App() {
+export default function AppWrapper() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -232,9 +294,14 @@ export default function App() {
 
   const generateSubtasks = async () => {
     if (!taskForm.title.trim()) return;
+    const ai = getGenAI();
+    if (!ai) {
+      alert("AI функции недоступны. Проверьте API ключ.");
+      return;
+    }
     setIsAiLoading(true);
     try {
-      const response = await genAI.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Разбей задачу "${taskForm.title}" на 3-5 конкретных подзадач. Верни только список подзадач через запятую, без лишних слов.`,
       });
@@ -250,11 +317,13 @@ export default function App() {
 
   const getDailyBriefing = async () => {
     if (!user || tasks.length === 0) return;
+    const ai = getGenAI();
+    if (!ai) return;
     setIsAiLoading(true);
     try {
       const todayTasks = tasks.filter(t => t.dueDate && isSameDay(t.dueDate.toDate(), startOfToday()));
       const taskList = todayTasks.map(t => `- ${t.title} (${t.priority})`).join('\n');
-      const response = await genAI.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Ты - персональный ассистент. Вот список задач на сегодня:\n${taskList}\nДай краткое, мотивирующее напутствие на день (2-3 предложения).`,
       });
@@ -269,6 +338,12 @@ export default function App() {
   const askMemory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !user || isChatLoading) return;
+
+    const ai = getGenAI();
+    if (!ai) {
+      setChatMessages(prev => [...prev, { role: 'ai', content: "AI функции недоступны. Проверьте настройки API ключа." }]);
+      return;
+    }
 
     const userMsg = chatInput;
     setChatInput('');
@@ -293,7 +368,7 @@ export default function App() {
 
 Отвечай кратко и по делу на русском языке.`;
 
-      const response = await genAI.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
