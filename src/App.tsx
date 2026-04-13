@@ -123,9 +123,11 @@ interface Note {
 let genAI: GoogleGenAI | null = null;
 const getGenAI = () => {
   if (!genAI) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    // Check both standard and VITE-prefixed env vars for maximum compatibility
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    
     if (!apiKey) {
-      console.warn("GEMINI_API_KEY is not defined. AI features will be disabled.");
+      console.warn("GEMINI_API_KEY or VITE_GEMINI_API_KEY is not defined. AI features will be disabled.");
       return null;
     }
     genAI = new GoogleGenAI({ apiKey });
@@ -200,6 +202,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [dailyBriefing, setDailyBriefing] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return document.documentElement.classList.contains('dark') || 
@@ -257,8 +260,22 @@ function App() {
   }, []);
 
   const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    setLoginError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      // Force account selection to prevent auto-closing if there's a session conflict
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      console.error('Login error:', error);
+      if (error.code === 'auth/unauthorized-domain') {
+        setLoginError(`Домен не авторизован в Firebase. Добавьте ваш URL в консоль Firebase.`);
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        // Ignore this one, user just closed it
+      } else {
+        setLoginError(`Ошибка входа: ${error.message}`);
+      }
+    }
   };
 
   const handleLogout = async () => {
@@ -302,7 +319,7 @@ function App() {
     setIsAiLoading(true);
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: `Разбей задачу "${taskForm.title}" на 3-5 конкретных подзадач. Верни только список подзадач через запятую, без лишних слов.`,
       });
       const text = response.text;
@@ -324,7 +341,7 @@ function App() {
       const todayTasks = tasks.filter(t => t.dueDate && isSameDay(t.dueDate.toDate(), startOfToday()));
       const taskList = todayTasks.map(t => `- ${t.title} (${t.priority})`).join('\n');
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: `Ты - персональный ассистент. Вот список задач на сегодня:\n${taskList}\nДай краткое, мотивирующее напутствие на день (2-3 предложения).`,
       });
       setDailyBriefing(response.text);
@@ -341,7 +358,10 @@ function App() {
 
     const ai = getGenAI();
     if (!ai) {
-      setChatMessages(prev => [...prev, { role: 'ai', content: "AI функции недоступны. Проверьте настройки API ключа." }]);
+      setChatMessages(prev => [...prev, { 
+        role: 'ai', 
+        content: "AI функции недоступны. Пожалуйста, добавьте переменную VITE_GEMINI_API_KEY в настройках Vercel и сделайте Redeploy." 
+      }]);
       return;
     }
 
@@ -369,7 +389,7 @@ function App() {
 Отвечай кратко и по делу на русском языке.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: prompt,
       });
 
@@ -476,6 +496,12 @@ function App() {
           <CardDescription>Ваш интеллектуальный помощник, чтобы ничего не забыть</CardDescription>
         </CardHeader>
         <CardContent>
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{loginError}</span>
+            </div>
+          )}
           <Button onClick={handleLogin} className="w-full h-12 text-lg gap-2">
             <LogIn className="w-5 h-5" /> Войти через Google
           </Button>
