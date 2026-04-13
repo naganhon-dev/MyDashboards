@@ -320,7 +320,7 @@ function App() {
     setIsAiLoading(true);
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         contents: `Разбей задачу "${taskForm.title}" на 3-5 конкретных подзадач. Верни только список подзадач через запятую, без лишних слов.`,
       });
       const text = response.text;
@@ -343,7 +343,7 @@ function App() {
       const todayTasks = tasks.filter(t => t.dueDate && isSameDay(t.dueDate.toDate(), startOfToday()));
       const taskList = todayTasks.map(t => `- ${t.title} (${t.priority})`).join('\n');
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         contents: `Ты - персональный ассистент. Вот список задач на сегодня:\n${taskList}\nДай краткое, мотивирующее напутствие на день (2-3 предложения).`,
       });
       setDailyBriefing(response.text);
@@ -392,7 +392,7 @@ function App() {
 Отвечай кратко и по делу на русском языке.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
       });
 
