@@ -724,24 +724,37 @@ function App() {
                   {currentWeekDays.map((day) => {
                     const isSelected = isSameDay(day, selectedDate);
                     const isTodayDate = isToday(day);
+                    
+                    const dayTasks = tasks.filter(t => t.dueDate && isSameDay(t.dueDate.toDate(), day));
+                    const hasUncompleted = dayTasks.some(t => t.status !== 'done');
+                    const isOverdue = hasUncompleted && day < startOfToday();
+
                     return (
                       <button 
                         key={day.toISOString()} 
                         onClick={() => setSelectedDate(day)} 
                         className={cn(
-                          "flex flex-col items-center justify-center py-3 transition-colors hover:bg-swamp-50 dark:hover:bg-swamp-800/50",
+                          "flex flex-col items-center justify-center py-3 transition-colors hover:bg-swamp-50 dark:hover:bg-swamp-800/50 relative",
                           isSelected && "bg-swamp-50 dark:bg-swamp-800/50"
                         )}
                       >
-                        <span className="text-[10px] uppercase font-medium text-swamp-500 dark:text-swamp-400 mb-1">
+                        <span className={cn(
+                          "text-[10px] uppercase font-medium mb-1",
+                          isOverdue ? "text-red-500 dark:text-red-400 font-bold" : "text-swamp-500 dark:text-swamp-400"
+                        )}>
                           {format(day, 'EEEEEE', { locale: ru })}
                         </span>
                         <div className={cn(
                           "w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium",
                           isSelected ? "bg-primary text-primary-foreground" : 
-                          isTodayDate ? "text-primary bg-primary/10" : "text-swamp-700 dark:text-swamp-300"
+                          isTodayDate ? "text-primary bg-primary/10" : 
+                          isOverdue ? "text-red-600 dark:text-red-400" : "text-swamp-700 dark:text-swamp-300"
                         )}>
                           {format(day, 'd')}
+                        </div>
+                        <div className="h-1 mt-0.5 flex gap-1 absolute bottom-1.5">
+                          {isOverdue && <div className="w-1 h-1 rounded-full bg-red-500" />}
+                          {!isOverdue && hasUncompleted && <div className="w-1 h-1 rounded-full bg-primary" />}
                         </div>
                       </button>
                     );
