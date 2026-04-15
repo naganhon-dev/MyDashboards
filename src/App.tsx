@@ -75,7 +75,8 @@ import {
   Lightbulb,
   X,
   Tag as TagIcon,
-  BrainCircuit
+  BrainCircuit,
+  Pencil
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { format, addDays, startOfToday, isSameDay, eachDayOfInterval, isToday, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
@@ -242,6 +243,10 @@ function App() {
   const [newAlgoTitle, setNewAlgoTitle] = useState('');
   const [newAlgoContent, setNewAlgoContent] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
+  
+  const [editingAlgoId, setEditingAlgoId] = useState<string | null>(null);
+  const [editAlgoTitle, setEditAlgoTitle] = useState('');
+  const [editAlgoContent, setEditAlgoContent] = useState('');
 
   // Weekly Calendar
   const currentWeekDays = useMemo(() => {
@@ -478,6 +483,21 @@ function App() {
     });
     setNewAlgoTitle('');
     setNewAlgoContent('');
+  };
+
+  const updateAlgorithm = async (id: string) => {
+    if (!editAlgoTitle.trim() || !editAlgoContent.trim()) return;
+    await updateDoc(doc(db, 'algorithms', id), {
+      title: editAlgoTitle,
+      content: editAlgoContent,
+    });
+    setEditingAlgoId(null);
+  };
+
+  const startEditingAlgo = (algo: Algorithm) => {
+    setEditingAlgoId(algo.id);
+    setEditAlgoTitle(algo.title);
+    setEditAlgoContent(algo.content);
   };
 
   // --- Filtering ---
@@ -817,13 +837,33 @@ function App() {
               <div className="lg:col-span-2 space-y-4">
                 {filteredAlgos.map(algo => (
                   <Card key={algo.id} className="border-none shadow-sm overflow-hidden dark:bg-swamp-900">
-                    <CardHeader className="bg-swamp-50/50 dark:bg-swamp-800/50 flex flex-row items-center justify-between py-3">
-                      <CardTitle className="text-md dark:text-white">{algo.title}</CardTitle>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteDoc(doc(db, 'algorithms', algo.id))}><Trash2 className="w-4 h-4" /></Button>
-                    </CardHeader>
-                    <CardContent className="pt-4 prose prose-sm dark:prose-invert max-w-none">
-                      <ReactMarkdown>{algo.content}</ReactMarkdown>
-                    </CardContent>
+                    {editingAlgoId === algo.id ? (
+                      <>
+                        <CardHeader className="bg-swamp-50/50 dark:bg-swamp-800/50 py-3">
+                          <Input className="dark:bg-swamp-800 dark:border-swamp-700 dark:text-white" value={editAlgoTitle} onChange={(e) => setEditAlgoTitle(e.target.value)} />
+                        </CardHeader>
+                        <CardContent className="pt-4 space-y-4">
+                          <Textarea className="min-h-[200px] text-sm dark:bg-swamp-800 dark:border-swamp-700 dark:text-white" value={editAlgoContent} onChange={(e) => setEditAlgoContent(e.target.value)} />
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setEditingAlgoId(null)}>Отмена</Button>
+                            <Button onClick={() => updateAlgorithm(algo.id)}>Сохранить</Button>
+                          </div>
+                        </CardContent>
+                      </>
+                    ) : (
+                      <>
+                        <CardHeader className="bg-swamp-50/50 dark:bg-swamp-800/50 flex flex-row items-center justify-between py-3">
+                          <CardTitle className="text-md dark:text-white">{algo.title}</CardTitle>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-swamp-500 hover:text-primary" onClick={() => startEditingAlgo(algo)}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteDoc(doc(db, 'algorithms', algo.id))}><Trash2 className="w-4 h-4" /></Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-4 prose prose-sm dark:prose-invert max-w-none">
+                          <ReactMarkdown>{algo.content}</ReactMarkdown>
+                        </CardContent>
+                      </>
+                    )}
                   </Card>
                 ))}
               </div>
