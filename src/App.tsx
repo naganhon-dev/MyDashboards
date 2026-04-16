@@ -102,6 +102,7 @@ interface Task {
   dueDate?: Timestamp | null;
   tags?: string[];
   subtasks?: Subtask[];
+  workspace?: 'work' | 'personal';
 }
 
 interface Algorithm {
@@ -111,6 +112,7 @@ interface Algorithm {
   userId: string;
   createdAt: Timestamp;
   tags?: string[];
+  workspace?: 'work' | 'personal';
 }
 
 interface Note {
@@ -118,6 +120,7 @@ interface Note {
   content: string;
   userId: string;
   createdAt: Timestamp;
+  workspace?: 'work' | 'personal';
 }
 
 // --- AI Setup ---
@@ -193,9 +196,15 @@ export default function AppWrapper() {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [algorithms, setAlgorithms] = useState<Algorithm[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<'work' | 'personal'>('work');
+  
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [allAlgorithms, setAllAlgorithms] = useState<Algorithm[]>([]);
+  const [allNotes, setAllNotes] = useState<Note[]>([]);
+
+  const tasks = useMemo(() => allTasks.filter(t => (t.workspace || 'work') === activeWorkspace), [allTasks, activeWorkspace]);
+  const algorithms = useMemo(() => allAlgorithms.filter(a => (a.workspace || 'work') === activeWorkspace), [allAlgorithms, activeWorkspace]);
+  const notes = useMemo(() => allNotes.filter(n => (n.workspace || 'work') === activeWorkspace), [allNotes, activeWorkspace]);
   
   // UI states
   const [activeTab, setActiveTab] = useState('tasks');
@@ -303,15 +312,15 @@ function App() {
     }
 
     const unsubTasks = onSnapshot(query(collection(db, 'tasks'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), (s) => {
-      setTasks(s.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
+      setAllTasks(s.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
     });
 
     const unsubAlgos = onSnapshot(query(collection(db, 'algorithms'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), (s) => {
-      setAlgorithms(s.docs.map(d => ({ id: d.id, ...d.data() } as Algorithm)));
+      setAllAlgorithms(s.docs.map(d => ({ id: d.id, ...d.data() } as Algorithm)));
     });
 
     const unsubNotes = onSnapshot(query(collection(db, 'notes'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), (s) => {
-      setNotes(s.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
+      setAllNotes(s.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
     });
 
     return () => { unsubTasks(); unsubAlgos(); unsubNotes(); };
@@ -432,6 +441,7 @@ function App() {
             content: transcript,
             userId: user.uid,
             createdAt: serverTimestamp(),
+            workspace: activeWorkspace,
           });
         } catch (error) {
           console.error("Error adding voice note: ", error);
@@ -451,7 +461,8 @@ function App() {
       status: 'todo',
       userId: user.uid,
       createdAt: serverTimestamp(),
-      dueDate: taskForm.dueDate ? Timestamp.fromDate(taskForm.dueDate) : null
+      dueDate: taskForm.dueDate ? Timestamp.fromDate(taskForm.dueDate) : null,
+      workspace: activeWorkspace,
     });
     setTaskForm({ title: '', description: '', dueDate: undefined, priority: 'medium', tags: [], subtasks: [] });
     setIsTaskModalOpen(false);
@@ -468,6 +479,7 @@ function App() {
       content: newNoteContent,
       userId: user.uid,
       createdAt: serverTimestamp(),
+      workspace: activeWorkspace,
     });
     setNewNoteContent('');
   };
@@ -480,6 +492,7 @@ function App() {
       content: newAlgoContent,
       userId: user.uid,
       createdAt: serverTimestamp(),
+      workspace: activeWorkspace,
     });
     setNewAlgoTitle('');
     setNewAlgoContent('');
@@ -581,6 +594,14 @@ function App() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setActiveWorkspace(prev => prev === 'work' ? 'personal' : 'work')}
+              className="flex rounded-full text-xs font-medium"
+            >
+              {activeWorkspace === 'work' ? '💼 Рабочий' : '🏠 Личный'}
+            </Button>
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full">
               {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-swamp-600" />}
             </Button>
