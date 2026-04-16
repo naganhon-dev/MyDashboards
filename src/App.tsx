@@ -305,9 +305,9 @@ function App() {
 
   useEffect(() => {
     if (!isAuthReady || !user) {
-      setTasks([]);
-      setAlgorithms([]);
-      setNotes([]);
+      setAllTasks([]);
+      setAllAlgorithms([]);
+      setAllNotes([]);
       return;
     }
 
@@ -575,25 +575,45 @@ function App() {
     <div className="min-h-screen bg-swamp-50/50 dark:bg-swamp-950 flex flex-col font-sans transition-colors duration-300">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/80 dark:bg-swamp-900/80 backdrop-blur-md">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-lg shadow-sm">
-              <BrainCircuit className="w-5 h-5 text-white" />
+        <div className="container mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 sm:h-16 sm:py-0">
+          <div className="flex items-center justify-between w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <div className="bg-primary p-1.5 rounded-lg shadow-sm">
+                <BrainCircuit className="w-5 h-5 text-white" />
+              </div>
+              <h1 className="text-xl font-bold tracking-tight dark:text-white hidden sm:block">Планер</h1>
             </div>
-            <h1 className="text-xl font-bold tracking-tight hidden md:block dark:text-white">Планер проебщика</h1>
+            
+            <div className="flex items-center gap-2 sm:hidden">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setActiveWorkspace(prev => prev === 'work' ? 'personal' : 'work')}
+                className="flex rounded-full text-xs font-medium px-2 h-8"
+              >
+                {activeWorkspace === 'work' ? '💼' : '🏠'}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full h-8 w-8">
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-swamp-600" />}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8">
+                <LogOut className="w-4 h-4 text-muted-foreground" />
+              </Button>
+              <img src={user.photoURL || ''} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
+            </div>
           </div>
 
-          <div className="flex-1 max-w-md relative">
-            <Search className="absolute left-3 top-1/2 -transwamp-y-1/2 w-4 h-4 text-muted-foreground" />
+          <div className="w-full sm:flex-1 sm:max-w-md relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Поиск..." 
-              className="pl-10 bg-swamp-100/50 dark:bg-swamp-800/50 border-none focus-visible:ring-1"
+              className="pl-10 bg-swamp-100/50 dark:bg-swamp-800/50 border-none focus-visible:ring-1 h-9 sm:h-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden sm:flex items-center gap-2 sm:gap-3">
             <Button 
               variant="outline" 
               size="sm" 
@@ -654,7 +674,7 @@ function App() {
                     type="button"
                     onClick={startVoiceInput}
                     className={cn(
-                      "absolute right-2 top-1/2 -transwamp-y-1/2 transition-colors",
+                      "absolute right-2 top-1/2 -translate-y-1/2 transition-colors",
                       isRecording ? "text-red-500 animate-pulse" : "text-swamp-400 hover:text-primary"
                     )}
                   >
@@ -683,10 +703,10 @@ function App() {
         <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6">
-              <TabsList className="bg-swamp-200/50 dark:bg-swamp-800/50 p-1">
-                <TabsTrigger value="tasks" className="gap-2 flex-1 sm:flex-none"><CheckCircle2 className="w-4 h-4" /> Задачи</TabsTrigger>
-                <TabsTrigger value="algorithms" className="gap-2 flex-1 sm:flex-none"><BookOpen className="w-4 h-4" /> База знаний</TabsTrigger>
-                <TabsTrigger value="memory" className="gap-2 flex-1 sm:flex-none"><History className="w-4 h-4" /> Спросить память</TabsTrigger>
+              <TabsList className="bg-swamp-200/50 dark:bg-swamp-800/50 p-1 flex flex-wrap h-auto">
+                <TabsTrigger value="tasks" className="gap-2 flex-1 sm:flex-none py-2"><CheckCircle2 className="w-4 h-4" /> <span className="hidden sm:inline">Задачи</span></TabsTrigger>
+                <TabsTrigger value="algorithms" className="gap-2 flex-1 sm:flex-none py-2"><BookOpen className="w-4 h-4" /> <span className="hidden sm:inline">База знаний</span></TabsTrigger>
+                <TabsTrigger value="memory" className="gap-2 flex-1 sm:flex-none py-2"><History className="w-4 h-4" /> <span className="hidden sm:inline">Спросить память</span></TabsTrigger>
               </TabsList>
 
               {activeTab === 'tasks' && (
@@ -891,7 +911,7 @@ function App() {
             </TabsContent>
 
             <TabsContent value="memory" className="outline-none">
-              <Card className="border-none shadow-sm dark:bg-swamp-900 h-[600px] flex flex-col">
+              <Card className="border-none shadow-sm dark:bg-swamp-900 h-[calc(100vh-250px)] lg:h-[600px] flex flex-col">
                 <CardHeader className="border-b dark:border-swamp-800">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <BrainCircuit className="w-5 h-5 text-primary" />
