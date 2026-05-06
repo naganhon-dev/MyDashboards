@@ -6,6 +6,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 // Log config info (masking key for security)
 console.log(`[Firebase Init] Project: ${firebaseConfig.projectId}`);
 console.log(`[Firebase Init] Database: ${firebaseConfig.firestoreDatabaseId}`);
+console.log("Database connected to:", firebaseConfig.projectId, " / ", firebaseConfig.firestoreDatabaseId);
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
