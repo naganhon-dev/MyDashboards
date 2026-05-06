@@ -285,6 +285,8 @@ function App() {
   const [generatedLinkCode, setGeneratedLinkCode] = useState<string | null>(null);
   const [isLinkingLoading, setIsLinkingLoading] = useState(false);
 
+  const [isTmaResolved, setIsTmaResolved] = useState(false);
+  
   // --- Identity Logic ---
 
   // activeUid is the source of truth for all data operations
@@ -296,12 +298,12 @@ function App() {
   const isResolvingUser = useMemo(() => {
     if (!isAuthReady) return true;
     if (isTMA) {
-      // In TMA, we must either have a linkedUid OR be showing the linking screen
-      return !linkedUid && !showLinkingScreen;
+      // In TMA, we must finish checking for a link (isTmaResolved)
+      return !isTmaResolved;
     }
-    // In Browser, we are resolved once isAuthReady is true (even if user is null)
+    // In Browser, we are resolved once isAuthReady is true
     return false;
-  }, [isAuthReady, isTMA, linkedUid, showLinkingScreen]);
+  }, [isAuthReady, isTMA, isTmaResolved]);
 
   // Error Handler
   const handleFirestoreError = (error: any, operationType: string, path: string | null) => {
@@ -328,6 +330,7 @@ function App() {
       
       const initTMA = async () => {
         setIsTMA(true);
+        console.log("TMA Initializing...");
         
         // Sync theme with Telegram
         if (tg.colorScheme === 'dark') {
@@ -338,23 +341,31 @@ function App() {
         
         if (tg.initDataUnsafe?.user) {
           const tUser = tg.initDataUnsafe.user;
+          console.log("Found TG user:", tUser.id);
           setTgUser({ id: tUser.id, first_name: tUser.first_name });
           
           // Check for link
           try {
             const linkDoc = await getDoc(doc(db, 'user_links', tUser.id.toString()));
             if (linkDoc.exists()) {
-              const fUserId = linkDoc.data().userId;
+              const data = linkDoc.data();
+              const fUserId = data.userId || data.linked_uid; // check both for compatibility
+              console.log("Found existing link to userId:", fUserId);
               setLinkedUid(fUserId);
               setShowLinkingScreen(false);
             } else {
+              console.log("No link found, showing linking screen");
               setShowLinkingScreen(true);
             }
           } catch (error) {
             console.error("Error checking user link:", error);
             setShowLinkingScreen(true);
           }
+        } else {
+          console.warn("No TG user info in initDataUnsafe");
+          setShowLinkingScreen(true);
         }
+        setIsTmaResolved(true);
       };
       initTMA();
     } else {
