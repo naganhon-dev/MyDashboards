@@ -589,7 +589,7 @@ function App() {
       await setDoc(doc(db, 'link_codes', code), {
         code,
         google_uid: user.uid,
-        expiresAt: Timestamp.fromDate(addDays(new Date(), 0.007)), // ~10 mins
+        expiresAt: Timestamp.fromDate(new Date(Date.now() + 3600000)), // 60 mins
         createdAt: serverTimestamp()
       });
       setGeneratedLinkCode(code);
@@ -605,12 +605,15 @@ function App() {
   const verifyLinkCode = async () => {
     if (!tgUser || !codeInput.trim()) return;
     setIsLinkingLoading(true);
+    const enteredCode = codeInput.trim();
     try {
-      const codeDoc = await getDoc(doc(db, 'link_codes', codeInput.trim()));
+      const codeDoc = await getDoc(doc(db, 'link_codes', enteredCode));
       if (codeDoc.exists()) {
         const data = codeDoc.data();
-        const now = new Date();
-        if (data.expiresAt.toDate() > now) {
+        const nowMs = Date.now();
+        const expiresAtMs = data.expiresAt.toMillis();
+        
+        if (expiresAtMs > nowMs) {
           // Valid code
           await setDoc(doc(db, 'user_links', tgUser.id.toString()), {
             linked_uid: data.google_uid
@@ -618,7 +621,7 @@ function App() {
           setLinkedUid(data.google_uid);
           setShowLinkingScreen(false);
           // Delete code after use
-          await deleteDoc(doc(db, 'link_codes', codeInput.trim()));
+          await deleteDoc(doc(db, 'link_codes', enteredCode));
         } else {
           alert("Код истек. Сгенерируйте новый.");
         }
