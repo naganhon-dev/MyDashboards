@@ -13,6 +13,8 @@ import {
   updateDoc, 
   deleteDoc, 
   doc, 
+  getDoc,
+  setDoc,
   serverTimestamp, 
   orderBy,
   Timestamp
@@ -85,6 +87,48 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
+
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp: {
+        ready: () => void;
+        expand: () => void;
+        initData: string;
+        initDataUnsafe: {
+          user?: {
+            id: number;
+            first_name: string;
+            last_name?: string;
+            username?: string;
+          }
+        };
+        colorScheme: 'light' | 'dark';
+        onEvent: (eventType: string, eventHandler: () => void) => void;
+        MainButton: {
+          text: string;
+          show: () => void;
+          hide: () => void;
+          showProgress: (leaveActive: boolean) => void;
+          hideProgress: () => void;
+          disable: () => void;
+          enable: () => void;
+          onClick: (callback: () => void) => void;
+        };
+      };
+    };
+  }
+}
+
+interface UserLink {
+  linked_uid: string;
+}
+
+interface LinkCode {
+  code: string;
+  google_uid: string;
+  expiresAt: Timestamp;
+}
 
 interface Subtask {
   title: string;
@@ -228,6 +272,83 @@ function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   
+  // Linking states
+  const [linkedUid, setLinkedUid] = useState<string | null>(null);
+  const [isTMA, setIsTMA] = useState(false);
+  const [tgUser, setTgUser] = useState<{id: number, first_name: string} | null>(null);
+  const [showLinkingScreen, setShowLinkingScreen] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const [generatedLinkCode, setGeneratedLinkCode] = useState<string | null>(null);
+  const [isLinkingLoading, setIsLinkingLoading] = useState(false);
+  
+  // Telegram Mini App Initialization
+  useEffect(() => {
+    const initTMA = async () => {
+      if (window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        setIsTMA(true);
+        
+        // Sync theme with Telegram
+        if (tg.colorScheme === 'dark') {
+          setIsDarkMode(true);
+        } else if (tg.colorScheme === 'light') {
+          setIsDarkMode(false);
+        }
+        
+        if (tg.initDataUnsafe?.user) {
+          const tUser = tg.initDataUnsafe.user;
+          setTgUser({ id: tUser.id, first_name: tUser.first_name });
+          
+          // Check for link
+          try {
+            const linkDoc = await getDoc(doc(db, 'user_links', tUser.id.toString()));
+            if (linkDoc.exists()) {
+              setLinkedUid(linkDoc.data().linked_uid);
+              setShowLinkingScreen(false);
+            } else {
+              setShowLinkingScreen(true);
+            }
+          } catch (error) {
+            console.error("Error checking user link:", error);
+            setShowLinkingScreen(true);
+          }
+        } else {
+          if (!tg.initData) {
+            console.warn("Пожалуйста, откройте это приложение в Telegram");
+          }
+        }
+      }
+    };
+    initTMA();
+  }, []);
+
+  // Update linkedUid for non-TMA users
+  useEffect(() => {
+    if (!isTMA && user) {
+      setLinkedUid(user.uid);
+    } else if (!isTMA && !user) {
+      setLinkedUid(null);
+    }
+  }, [user, isTMA]);
+
+  // TMA MainButton Loading Indicator
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.MainButton) {
+      if (!isAuthReady || isAiLoading || isChatLoading || isLinkingLoading) {
+        tg.MainButton.text = "Загрузка данных...";
+        tg.MainButton.show();
+        tg.MainButton.showProgress(false);
+        tg.MainButton.disable();
+      } else {
+        tg.MainButton.hide();
+        tg.MainButton.hideProgress();
+      }
+    }
+  }, [isAuthReady, isAiLoading, isChatLoading, isLinkingLoading]);
+
   // Theme effect
   useEffect(() => {
     if (isDarkMode) {
@@ -304,27 +425,30 @@ function App() {
   // --- Data Fetching ---
 
   useEffect(() => {
-    if (!isAuthReady || !user) {
+    if (!isAuthReady || (!user && !isTMA) || (isTMA && !linkedUid)) {
       setAllTasks([]);
       setAllAlgorithms([]);
       setAllNotes([]);
       return;
     }
 
-    const unsubTasks = onSnapshot(query(collection(db, 'tasks'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), (s) => {
+    const uidToUse = linkedUid;
+    if (!uidToUse) return;
+
+    const unsubTasks = onSnapshot(query(collection(db, 'tasks'), where('userId', '==', uidToUse), orderBy('createdAt', 'desc')), (s) => {
       setAllTasks(s.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
     });
 
-    const unsubAlgos = onSnapshot(query(collection(db, 'algorithms'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), (s) => {
+    const unsubAlgos = onSnapshot(query(collection(db, 'algorithms'), where('userId', '==', uidToUse), orderBy('createdAt', 'desc')), (s) => {
       setAllAlgorithms(s.docs.map(d => ({ id: d.id, ...d.data() } as Algorithm)));
     });
 
-    const unsubNotes = onSnapshot(query(collection(db, 'notes'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), (s) => {
+    const unsubNotes = onSnapshot(query(collection(db, 'notes'), where('userId', '==', uidToUse), orderBy('createdAt', 'desc')), (s) => {
       setAllNotes(s.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
     });
 
     return () => { unsubTasks(); unsubAlgos(); unsubNotes(); };
-  }, [user, isAuthReady]);
+  }, [user, linkedUid, isAuthReady, isTMA]);
 
   // --- AI Actions ---
 
@@ -353,7 +477,7 @@ function App() {
   };
 
   const getDailyBriefing = async () => {
-    if (!user || tasks.length === 0) return;
+    if (!linkedUid || tasks.length === 0) return;
     const ai = getGenAI();
     if (!ai) return;
     setIsAiLoading(true);
@@ -375,7 +499,7 @@ function App() {
 
   const askMemory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !user || isChatLoading) return;
+    if (!chatInput.trim() || !linkedUid || isChatLoading) return;
 
     const ai = getGenAI();
     if (!ai) {
@@ -435,11 +559,11 @@ function App() {
     recognition.onend = () => setIsRecording(false);
     recognition.onresult = async (event: any) => {
       const transcript = event.results[0][0].transcript;
-      if (transcript.trim() && user) {
+      if (transcript.trim() && linkedUid) {
         try {
           await addDoc(collection(db, 'notes'), {
             content: transcript,
-            userId: user.uid,
+            userId: linkedUid,
             createdAt: serverTimestamp(),
             workspace: activeWorkspace,
           });
@@ -451,15 +575,63 @@ function App() {
     recognition.start();
   };
 
+  // --- Linking Actions ---
+
+  const generateLinkCode = async () => {
+    if (!user) return;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    try {
+      await setDoc(doc(db, 'link_codes', code), {
+        code,
+        google_uid: user.uid,
+        expiresAt: Timestamp.fromDate(addDays(new Date(), 0.007)) // ~10 mins
+      });
+      setGeneratedLinkCode(code);
+    } catch (error) {
+      console.error("Error generating link code:", error);
+    }
+  };
+
+  const verifyLinkCode = async () => {
+    if (!tgUser || !codeInput.trim()) return;
+    setIsLinkingLoading(true);
+    try {
+      const codeDoc = await getDoc(doc(db, 'link_codes', codeInput.trim()));
+      if (codeDoc.exists()) {
+        const data = codeDoc.data();
+        const now = new Date();
+        if (data.expiresAt.toDate() > now) {
+          // Valid code
+          await setDoc(doc(db, 'user_links', tgUser.id.toString()), {
+            linked_uid: data.google_uid
+          });
+          setLinkedUid(data.google_uid);
+          setShowLinkingScreen(false);
+          // Delete code after use
+          await deleteDoc(doc(db, 'link_codes', codeInput.trim()));
+        } else {
+          alert("Код истек. Сгенерируйте новый.");
+        }
+      } else {
+        alert("Неверный код.");
+      }
+    } catch (error) {
+      console.error("Error verifying link code:", error);
+      alert("Ошибка при проверке кода.");
+    } finally {
+      setIsLinkingLoading(false);
+    }
+  };
+
   // --- CRUD Actions ---
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskForm.title.trim() || !user) return;
+    if (!taskForm.title.trim() || !linkedUid) return;
     await addDoc(collection(db, 'tasks'), {
       ...taskForm,
       status: 'todo',
-      userId: user.uid,
+      userId: linkedUid,
       createdAt: serverTimestamp(),
       dueDate: taskForm.dueDate ? Timestamp.fromDate(taskForm.dueDate) : null,
       workspace: activeWorkspace,
@@ -474,10 +646,10 @@ function App() {
 
   const addNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNoteContent.trim() || !user) return;
+    if (!newNoteContent.trim() || !linkedUid) return;
     await addDoc(collection(db, 'notes'), {
       content: newNoteContent,
-      userId: user.uid,
+      userId: linkedUid,
       createdAt: serverTimestamp(),
       workspace: activeWorkspace,
     });
@@ -486,11 +658,11 @@ function App() {
 
   const addAlgorithm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAlgoTitle.trim() || !newAlgoContent.trim() || !user) return;
+    if (!newAlgoTitle.trim() || !newAlgoContent.trim() || !linkedUid) return;
     await addDoc(collection(db, 'algorithms'), {
       title: newAlgoTitle,
       content: newAlgoContent,
-      userId: user.uid,
+      userId: linkedUid,
       createdAt: serverTimestamp(),
       workspace: activeWorkspace,
     });
@@ -585,6 +757,24 @@ function App() {
             </div>
             
             <div className="flex items-center gap-2 sm:hidden">
+              {!isTMA && user && (
+                <Dialog>
+                  <DialogTrigger render={<Button variant="outline" size="sm" className="h-8 px-2" onClick={generateLinkCode}><Send className="w-4 h-4" /></Button>} />
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Связать с Telegram</DialogTitle>
+                      <DialogDescription>
+                        Введите этот код в Telegram Mini App, чтобы синхронизировать данные.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex items-center justify-center py-6">
+                      <div className="text-4xl font-bold tracking-[0.5em] text-primary bg-primary/10 px-6 py-3 rounded-lg">
+                        {generatedLinkCode || "..."}
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -614,6 +804,24 @@ function App() {
           </div>
           
           <div className="hidden sm:flex items-center gap-2 sm:gap-3">
+            {!isTMA && user && (
+              <Dialog>
+                <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2 rounded-full" onClick={generateLinkCode}><Send className="w-4 h-4" /> Link Telegram</Button>} />
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Связать с Telegram</DialogTitle>
+                    <DialogDescription>
+                      Введите этот код в Telegram Mini App, чтобы синхронизировать данные.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex items-center justify-center py-10">
+                    <div className="text-5xl font-bold tracking-widest text-primary bg-primary/5 px-8 py-4 rounded-2xl border-2 border-primary/10">
+                      {generatedLinkCode || "..."}
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
             <Button 
               variant="outline" 
               size="sm" 
@@ -633,7 +841,53 @@ function App() {
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
+        <AnimatePresence>
+          {showLinkingScreen && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            >
+              <Card className="w-full max-w-sm border-2 border-primary/20 shadow-2xl">
+                <CardHeader className="text-center">
+                  <CardTitle className="text-2xl">Вход в систему</CardTitle>
+                  <CardDescription>
+                    Похоже, ваш Telegram аккаунт еще не привязан.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Откройте приложение в браузере, нажмите <strong>"Link Telegram"</strong> и введите код ниже:
+                    </p>
+                    <Input 
+                      placeholder="XXXXXX" 
+                      className="text-center text-2xl tracking-[0.3em] font-bold h-14"
+                      maxLength={6}
+                      value={codeInput}
+                      onChange={(e) => setCodeInput(e.target.value)}
+                    />
+                  </div>
+                  <Button 
+                    className="w-full h-12 text-lg" 
+                    onClick={verifyLinkCode}
+                    disabled={isLinkingLoading || codeInput.length < 6}
+                  >
+                    {isLinkingLoading ? "Проверка..." : "Подключиться"}
+                  </Button>
+                </CardContent>
+                <CardFooter className="justify-center border-t pt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Ваши данные в безопасности и зашифрованы.
+                  </p>
+                </CardFooter>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Sidebar / Briefing */}
         <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1">
           <Card className="border-none shadow-sm bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20">

@@ -40,6 +40,26 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "When the note was created." }
       },
       "required": ["content", "userId", "createdAt"]
+    },
+    "UserLink": {
+      "title": "UserLink",
+      "description": "Maps Telegram ID to Google UID.",
+      "type": "object",
+      "properties": {
+        "linked_uid": { "type": "string", "description": "The Google UID linked to this Telegram ID." }
+      },
+      "required": ["linked_uid"]
+    },
+    "LinkCode": {
+      "title": "LinkCode",
+      "description": "Temporary 6-digit code for account linking.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "6-digit code." },
+        "google_uid": { "type": "string", "description": "The Google UID to be linked." },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "Expiration time (10 mins)." }
+      },
+      "required": ["code", "google_uid", "expiresAt"]
     }
   },
   "firestore": {
@@ -54,6 +74,14 @@
     "/notes/{noteId}": {
       "schema": "Note",
       "description": "Quick notes/Inbox."
+    },
+    "/user_links/{telegramId}": {
+      "schema": "UserLink",
+      "description": "Mapping from Telegram ID to Google UID."
+    },
+    "/link_codes/{codeId}": {
+      "schema": "LinkCode",
+      "description": "Temporary linking codes."
     }
   }
 }
