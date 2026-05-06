@@ -274,7 +274,7 @@ function App() {
   
   // Linking states
   const [linkedUid, setLinkedUid] = useState<string | null>(null);
-  const [isTMA, setIsTMA] = useState(false);
+  const [isTMA, setIsTMA] = useState(() => typeof window !== 'undefined' && !!window.Telegram?.WebApp?.initData);
   const [tgUser, setTgUser] = useState<{id: number, first_name: string} | null>(null);
   const [showLinkingScreen, setShowLinkingScreen] = useState(false);
   const [codeInput, setCodeInput] = useState('');
@@ -283,11 +283,12 @@ function App() {
   
   // Telegram Mini App Initialization
   useEffect(() => {
-    const initTMA = async () => {
-      if (window.Telegram?.WebApp) {
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready(); // Call immediately for iOS
+      tg.expand();
+      
+      const initTMA = async () => {
         setIsTMA(true);
         
         // Sync theme with Telegram
@@ -319,19 +320,19 @@ function App() {
             console.warn("Пожалуйста, откройте это приложение в Telegram");
           }
         }
-      }
-    };
-    initTMA();
+      };
+      initTMA();
+    }
   }, []);
 
-  // Update linkedUid for non-TMA users
+  // Sync linkedUid for Browser (Google Auth)
   useEffect(() => {
-    if (!isTMA && user) {
-      setLinkedUid(user.uid);
-    } else if (!isTMA && !user) {
-      setLinkedUid(null);
+    if (isAuthReady) {
+      if (!isTMA) {
+        setLinkedUid(user?.uid || null);
+      }
     }
-  }, [user, isTMA]);
+  }, [user, isTMA, isAuthReady]);
 
   // TMA MainButton Loading Indicator
   useEffect(() => {
@@ -425,25 +426,25 @@ function App() {
   // --- Data Fetching ---
 
   useEffect(() => {
-    if (!isAuthReady || (!user && !isTMA) || (isTMA && !linkedUid)) {
+    // Determine which UID to use for data fetching
+    const currentUid = isTMA ? linkedUid : user?.uid;
+
+    if (!isAuthReady || !currentUid) {
       setAllTasks([]);
       setAllAlgorithms([]);
       setAllNotes([]);
       return;
     }
 
-    const uidToUse = linkedUid;
-    if (!uidToUse) return;
-
-    const unsubTasks = onSnapshot(query(collection(db, 'tasks'), where('userId', '==', uidToUse), orderBy('createdAt', 'desc')), (s) => {
+    const unsubTasks = onSnapshot(query(collection(db, 'tasks'), where('userId', '==', currentUid), orderBy('createdAt', 'desc')), (s) => {
       setAllTasks(s.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
     });
 
-    const unsubAlgos = onSnapshot(query(collection(db, 'algorithms'), where('userId', '==', uidToUse), orderBy('createdAt', 'desc')), (s) => {
+    const unsubAlgos = onSnapshot(query(collection(db, 'algorithms'), where('userId', '==', currentUid), orderBy('createdAt', 'desc')), (s) => {
       setAllAlgorithms(s.docs.map(d => ({ id: d.id, ...d.data() } as Algorithm)));
     });
 
-    const unsubNotes = onSnapshot(query(collection(db, 'notes'), where('userId', '==', uidToUse), orderBy('createdAt', 'desc')), (s) => {
+    const unsubNotes = onSnapshot(query(collection(db, 'notes'), where('userId', '==', currentUid), orderBy('createdAt', 'desc')), (s) => {
       setAllNotes(s.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
     });
 
@@ -716,9 +717,13 @@ function App() {
 
   // --- Render ---
 
-  if (!isAuthReady) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" /></div>;
+  // Loading state: waiting for auth OR waiting for TMA link check
+  const isResolvingUser = !isAuthReady || (isTMA && !linkedUid && !showLinkingScreen);
 
-  if (!user) return (
+  if (isResolvingUser) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" /></div>;
+
+  // Show login only if NOT in TMA and no Google user
+  if (!user && !isTMA) return (
     <div className="flex h-screen items-center justify-center bg-swamp-50">
       <Card className="w-[400px] shadow-2xl border-none">
         <CardHeader className="text-center">
@@ -742,6 +747,12 @@ function App() {
       </Card>
     </div>
   );
+
+  // If in TMA but not linked yet, show nothing or just the linking screen 
+  // (the linking screen is currently rendered inside the main return, 
+  // but if we don't have a user we might want to wrap the main content)
+  
+  const currentPhotoURL = isTMA ? null : user?.photoURL;
 
   return (
     <div className="min-h-screen bg-swamp-50/50 dark:bg-swamp-950 flex flex-col font-sans transition-colors duration-300">
@@ -789,7 +800,13 @@ function App() {
               <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8">
                 <LogOut className="w-4 h-4 text-muted-foreground" />
               </Button>
-              <img src={user.photoURL || ''} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
+              {currentPhotoURL ? (
+                <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+                  <span className="text-[10px] font-bold text-primary">{tgUser?.first_name?.[0] || user?.displayName?.[0] || 'U'}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -836,7 +853,13 @@ function App() {
             <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full">
               <LogOut className="w-5 h-5 text-muted-foreground" />
             </Button>
-            <img src={user.photoURL || ''} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
+            {currentPhotoURL ? (
+              <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+                <span className="text-[10px] font-bold text-primary">{tgUser?.first_name?.[0] || user?.displayName?.[0] || 'U'}</span>
+              </div>
+            )}
           </div>
         </div>
       </header>
