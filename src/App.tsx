@@ -462,10 +462,12 @@ function App() {
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
   
   // Form states
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
     dueDate: undefined as Date | undefined,
+    dueTime: '12:00',
     priority: 'medium' as 'low' | 'medium' | 'high',
     tags: [] as string[],
     subtasks: [] as Subtask[]
@@ -756,19 +758,64 @@ function App() {
     e.preventDefault();
     if (!taskForm.title.trim() || !activeUid) return;
     try {
-      await addDoc(collection(db, 'tasks'), {
-        ...taskForm,
-        status: 'todo',
-        userId: activeUid,
-        createdAt: serverTimestamp(),
-        dueDate: taskForm.dueDate ? Timestamp.fromDate(taskForm.dueDate) : null,
-        workspace: activeWorkspace,
-      });
-      setTaskForm({ title: '', description: '', dueDate: undefined, priority: 'medium', tags: [], subtasks: [] });
+      let finalDueDate: Timestamp | null = null;
+      if (taskForm.dueDate) {
+        const d = new Date(taskForm.dueDate);
+        if (taskForm.dueTime) {
+          const [hours, minutes] = taskForm.dueTime.split(':');
+          if (hours && minutes) {
+            d.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+          }
+        }
+        finalDueDate = Timestamp.fromDate(d);
+      }
+
+      const taskData = {
+        title: taskForm.title,
+        description: taskForm.description || '',
+        priority: taskForm.priority,
+        tags: taskForm.tags || [],
+        subtasks: taskForm.subtasks || [],
+        dueDate: finalDueDate,
+      };
+
+      if (editingTaskId) {
+        await updateDoc(doc(db, 'tasks', editingTaskId), taskData);
+      } else {
+        await addDoc(collection(db, 'tasks'), {
+          ...taskData,
+          status: 'todo',
+          userId: activeUid,
+          createdAt: serverTimestamp(),
+          workspace: activeWorkspace,
+        });
+      }
+      setTaskForm({ title: '', description: '', dueDate: undefined, dueTime: '12:00', priority: 'medium', tags: [], subtasks: [] });
+      setEditingTaskId(null);
       setIsTaskModalOpen(false);
     } catch (error) {
-      handleFirestoreError(error, 'WRITE', 'tasks');
+      handleFirestoreError(error, editingTaskId ? 'UPDATE' : 'WRITE', 'tasks');
     }
+  };
+
+  const startEditingTask = (task: Task) => {
+    let dDate: Date | undefined = undefined;
+    let dTime = '12:00';
+    if (task.dueDate) {
+      dDate = task.dueDate.toDate();
+      dTime = format(dDate, 'HH:mm');
+    }
+    setTaskForm({
+      title: task.title,
+      description: task.description || '',
+      dueDate: dDate,
+      dueTime: dTime,
+      priority: task.priority,
+      tags: task.tags || [],
+      subtasks: task.subtasks || []
+    });
+    setEditingTaskId(task.id);
+    setIsTaskModalOpen(true);
   };
 
   const toggleTaskStatus = async (task: Task) => {
@@ -1146,23 +1193,40 @@ function App() {
               </TabsList>
 
               {activeTab === 'tasks' && (
-                <Dialog open={isTaskModalOpen} onOpenChange={setIsTaskModalOpen}>
-                  <DialogTrigger render={<Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto"><Plus className="w-4 h-4" /> Создать задачу</Button>} />
+                <Dialog open={isTaskModalOpen} onOpenChange={(open) => {
+                  setIsTaskModalOpen(open);
+                  if (!open) {
+                    setEditingTaskId(null);
+                    setTaskForm({ title: '', description: '', dueDate: undefined, dueTime: '12:00', priority: 'medium', tags: [], subtasks: [] });
+                  }
+                }}>
+                  <DialogTrigger asChild>
+                    <Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto overflow-hidden"><Plus className="w-4 h-4" /> Создать задачу</Button>
+                  </DialogTrigger>
                   <DialogContent className="sm:max-w-[500px] dark:bg-swamp-900 dark:border-swamp-800">
                     <form onSubmit={handleCreateTask}>
-                      <DialogHeader><DialogTitle className="dark:text-white">Новая задача</DialogTitle></DialogHeader>
+                      <DialogHeader><DialogTitle className="dark:text-white">{editingTaskId ? 'Редактировать' : 'Новая'} задача</DialogTitle></DialogHeader>
                       <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
                           <Label className="dark:text-swamp-300">Название</Label>
                           <Input className="dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.title} onChange={(e) => setTaskForm({...taskForm, title: e.target.value})} required />
                         </div>
+                        <div className="grid gap-2">
+                          <Label className="dark:text-swamp-300">Описание (необязательно)</Label>
+                          <Textarea className="min-h-[80px] dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.description} onChange={(e) => setTaskForm({...taskForm, description: e.target.value})} />
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="grid gap-2">
                             <Label className="dark:text-swamp-300">Срок</Label>
-                            <Popover>
-                              <PopoverTrigger render={<Button variant="outline" className="w-full justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4" /> {taskForm.dueDate ? format(taskForm.dueDate, "PPP", { locale: ru }) : "Выбрать"}</Button>} />
-                              <PopoverContent className="w-auto p-0 dark:bg-swamp-900 dark:border-swamp-800"><Calendar mode="single" selected={taskForm.dueDate} onSelect={(d) => setTaskForm({...taskForm, dueDate: d})} locale={ru} /></PopoverContent>
-                            </Popover>
+                            <div className="flex gap-2">
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" className="w-[140px] justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">{taskForm.dueDate ? format(taskForm.dueDate, "dd.MM.yyyy") : "Дата"}</span></Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0 dark:bg-swamp-900 dark:border-swamp-800"><Calendar mode="single" selected={taskForm.dueDate} onSelect={(d) => setTaskForm({...taskForm, dueDate: d})} locale={ru} /></PopoverContent>
+                              </Popover>
+                              <Input type="time" className="w-full flex-1 dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
+                            </div>
                           </div>
                           <div className="grid gap-2">
                             <Label className="dark:text-swamp-300">Приоритет</Label>
@@ -1177,19 +1241,19 @@ function App() {
                           <div className="flex justify-between items-center">
                             <Label className="dark:text-swamp-300">Подзадачи</Label>
                             <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-primary" onClick={generateSubtasks} disabled={isAiLoading}>
-                              <Sparkles className="w-3 h-3" /> {isAiLoading ? "Генерация..." : "AI Подзадачи"}
+                              <Sparkles className="w-3 h-3 shrink-0" /> {isAiLoading ? "Генерация..." : "AI Подзадачи"}
                             </Button>
                           </div>
                           <div className="space-y-2 max-h-[150px] overflow-y-auto p-2 border rounded-md bg-swamp-50 dark:bg-swamp-800 dark:border-swamp-700">
                             {taskForm.subtasks.map((st, i) => (
                               <div key={i} className="flex items-center gap-2 text-sm dark:text-swamp-300">
-                                <Circle className="w-3 h-3 text-swamp-400" /> {st.title}
+                                <Circle className="w-3 h-3 text-swamp-400 shrink-0" /> {st.title}
                               </div>
                             ))}
                           </div>
                         </div>
                       </div>
-                      <DialogFooter><Button type="submit" className="w-full">Сохранить задачу</Button></DialogFooter>
+                      <DialogFooter><Button type="submit" className="w-full">Сохранить</Button></DialogFooter>
                     </form>
                   </DialogContent>
                 </Dialog>
@@ -1279,7 +1343,26 @@ function App() {
                         <CardContent className="p-4 flex items-start gap-3">
                           <Checkbox checked={false} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1 dark:border-swamp-700" />
                           <div className="flex-1">
-                            <h4 className="font-semibold text-sm dark:text-white">{task.title}</h4>
+                            <h4 className="font-semibold text-sm dark:text-white leading-tight">{task.title}</h4>
+                            {task.description && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 dark:text-swamp-500">{task.description}</p>
+                            )}
+                            <div className="mt-2 flex items-center gap-3">
+                              {task.dueDate && (
+                                <span className={cn("flex items-center gap-1 text-[10px] font-medium", 
+                                  task.dueDate.toDate() < startOfToday() ? "text-red-500" : "text-swamp-500"
+                                )}>
+                                  <Clock className="w-3 h-3" /> {format(task.dueDate.toDate(), 'dd MMM HH:mm', { locale: ru })}
+                                </span>
+                              )}
+                              <span className={cn("text-[10px] font-medium px-2 hover:bg-opacity-80 transition-colors uppercase rounded-full border", 
+                                task.priority === 'high' ? "border-red-200 text-red-600 bg-red-50" : 
+                                task.priority === 'medium' ? "border-amber-200 text-amber-600 bg-amber-50" : 
+                                "border-sky-200 text-sky-600 bg-sky-50"
+                              )}>
+                                {task.priority === 'high' ? 'Высокий' : task.priority === 'medium' ? 'Средний' : 'Низкий'}
+                              </span>
+                            </div>
                             {task.subtasks && task.subtasks.length > 0 && (
                               <div className="mt-2 space-y-1">
                                 {task.subtasks.map((st, i) => (
@@ -1290,7 +1373,10 @@ function App() {
                               </div>
                             )}
                           </div>
-                          <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 h-8 w-8 text-destructive" onClick={() => deleteDoc(doc(db, 'tasks', task.id))}><Trash2 className="w-4 h-4" /></Button>
+                          <div className="flex flex-col gap-1 -mt-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-swamp-500 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditingTask(task)}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(db, 'tasks', task.id))}><Trash2 className="w-4 h-4" /></Button>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -1304,7 +1390,12 @@ function App() {
                       <Card key={task.id} className="bg-swamp-100/50 dark:bg-swamp-900/50 border-none opacity-70">
                         <CardContent className="p-3 flex items-start gap-3">
                           <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1" />
-                          <span className="text-sm line-through text-muted-foreground dark:text-swamp-500">{task.title}</span>
+                          <div className="flex-1 flex flex-col justify-center">
+                            <span className="text-sm line-through text-muted-foreground dark:text-swamp-500">{task.title}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(db, 'tasks', task.id))}><Trash2 className="w-4 h-4" /></Button>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -1446,7 +1537,7 @@ function App() {
                       </div>
                       <div className="mt-2 flex items-center gap-2 text-[10px] text-swamp-500 dark:text-swamp-400">
                         <CalendarIcon className="w-3 h-3" />
-                        {task.dueDate ? format(task.dueDate.toDate(), 'd MMMM', { locale: ru }) : 'Без даты'}
+                        {task.dueDate ? format(task.dueDate.toDate(), 'd MMMM, HH:mm', { locale: ru }) : 'Без даты'}
                       </div>
                     </div>
                   )) : (
