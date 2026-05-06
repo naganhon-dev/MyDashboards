@@ -429,8 +429,13 @@ function App() {
   useEffect(() => {
     // Determine which UID to use for data fetching
     const currentUid = isTMA ? linkedUid : user?.uid;
+    
+    console.log(`[Data Context] isTMA: ${isTMA}, user: ${user?.uid}, linkedUid: ${linkedUid}`);
+    console.log(`Используемый ID для загрузки данных: ${currentUid}`);
 
-    if (!isAuthReady || !currentUid) {
+    if (!isAuthReady) return;
+
+    if (!currentUid) {
       setAllTasks([]);
       setAllAlgorithms([]);
       setAllNotes([]);
@@ -729,10 +734,19 @@ function App() {
 
   // --- Render ---
 
-  // Loading state: waiting for auth OR waiting for TMA link check
+  // Loading state: waiting for auth OR (if in TMA) waiting for our linking system to resolve
+  // We only show the dashboard if we have a currentUid (linkedUid for TMA, user.uid for Web)
+  const currentUid = isTMA ? linkedUid : user?.uid;
   const isResolvingUser = !isAuthReady || (isTMA && !linkedUid && !showLinkingScreen);
 
-  if (isResolvingUser) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" /></div>;
+  if (isResolvingUser) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-swamp-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+        <p className="text-sm text-muted-foreground animate-pulse">Инициализация данных...</p>
+      </div>
+    );
+  }
 
   // Show login only if NOT in TMA and no Google user
   if (!user && !isTMA) return (
