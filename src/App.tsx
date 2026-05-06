@@ -581,16 +581,24 @@ function App() {
 
   const generateLinkCode = async () => {
     if (!user) return;
+    setGeneratedLinkCode(null);
+    setIsLinkingLoading(true);
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log("Attempting to generate link code:", code);
     try {
       await setDoc(doc(db, 'link_codes', code), {
         code,
         google_uid: user.uid,
-        expiresAt: Timestamp.fromDate(addDays(new Date(), 0.007)) // ~10 mins
+        expiresAt: Timestamp.fromDate(addDays(new Date(), 0.007)), // ~10 mins
+        createdAt: serverTimestamp()
       });
       setGeneratedLinkCode(code);
+      console.log("Successfully generated link code:", code);
     } catch (error) {
-      console.error("Error generating link code:", error);
+      console.error("Firebase Link Error:", error);
+      alert("Ошибка при генерации кода. Проверьте соединение.");
+    } finally {
+      setIsLinkingLoading(false);
     }
   };
 
@@ -780,9 +788,13 @@ function App() {
                       </DialogDescription>
                     </DialogHeader>
                     <div className="flex items-center justify-center py-6">
-                      <div className="text-4xl font-bold tracking-[0.5em] text-primary bg-primary/10 px-6 py-3 rounded-lg">
-                        {generatedLinkCode || "..."}
-                      </div>
+                      {isLinkingLoading ? (
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+                      ) : (
+                        <div className="text-4xl font-bold tracking-[0.5em] text-primary bg-primary/10 px-6 py-3 rounded-lg">
+                          {generatedLinkCode || "..."}
+                        </div>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -833,9 +845,13 @@ function App() {
                     </DialogDescription>
                   </DialogHeader>
                   <div className="flex items-center justify-center py-10">
-                    <div className="text-5xl font-bold tracking-widest text-primary bg-primary/5 px-8 py-4 rounded-2xl border-2 border-primary/10">
-                      {generatedLinkCode || "..."}
-                    </div>
+                    {isLinkingLoading ? (
+                      <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary" />
+                    ) : (
+                      <div className="text-5xl font-bold tracking-widest text-primary bg-primary/5 px-8 py-4 rounded-2xl border-2 border-primary/10">
+                        {generatedLinkCode || "..."}
+                      </div>
+                    )}
                   </div>
                 </DialogContent>
               </Dialog>
