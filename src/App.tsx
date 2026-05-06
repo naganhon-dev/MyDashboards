@@ -367,6 +367,7 @@ function App() {
           
           // Check for link
           try {
+            console.log(`[TMA Init] Using Firestore Project: ${db.app.options.projectId}`);
             const linkDoc = await getDoc(doc(db, 'user_links', tUser.id.toString()));
             if (linkDoc.exists()) {
               const data = linkDoc.data();
@@ -706,6 +707,7 @@ function App() {
     setIsLinkingLoading(true);
     const enteredCode = codeInput.trim();
     try {
+      console.log(`[Verify Link] Using Firestore Project: ${db.app.options.projectId}`);
       const codeDoc = await getDoc(doc(db, 'link_codes', enteredCode));
       if (codeDoc.exists()) {
         const data = codeDoc.data();
