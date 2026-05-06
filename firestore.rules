@@ -36,15 +36,24 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isAllowedToAccess(userId) {
+      return isAuthenticated() && (
+        request.auth.uid == userId || (
+          exists(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)).data.linked_uid == userId
+        )
+      );
+    }
+
     function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.userId;
+      return isAllowedToAccess(resource.data.userId);
     }
 
     function isValidTask(data) {
       return data.keys().hasAll(['title', 'status', 'userId', 'createdAt']) &&
              data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
              data.status in ['todo', 'in-progress', 'done'] &&
-             data.userId == request.auth.uid &&
+             isAllowedToAccess(data.userId) &&
              data.createdAt is timestamp &&
              (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
              (!('priority' in data) || (data.priority in ['low', 'medium', 'high'])) &&
@@ -57,7 +66,7 @@ service cloud.firestore {
       return data.keys().hasAll(['title', 'content', 'userId', 'createdAt']) &&
              data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
              data.content is string && data.content.size() >= 1 && data.content.size() <= 10000 &&
-             data.userId == request.auth.uid &&
+             isAllowedToAccess(data.userId) &&
              data.createdAt is timestamp &&
              (!('tags' in data) || (data.tags is list));
     }
@@ -65,7 +74,7 @@ service cloud.firestore {
     function isValidNote(data) {
       return data.keys().hasAll(['content', 'userId', 'createdAt']) &&
              data.content is string && data.content.size() >= 1 && data.content.size() <= 5000 &&
-             data.userId == request.auth.uid &&
+             isAllowedToAccess(data.userId) &&
              data.createdAt is timestamp;
     }
 
@@ -109,6 +118,12 @@ service cloud.firestore {
     match /user_links/{telegramId} {
       allow read: if true;
       allow create, update: if true; // Allow linking from TMA
+    }
+
+    match /user_links_anon/{anonUid} {
+      allow read: if isAuthenticated() && (request.auth.uid == anonUid || request.auth.uid == resource.data.linked_uid);
+      allow create, update: if isAuthenticated() && request.auth.uid == anonUid;
+      allow delete: if false;
     }
   }
 }

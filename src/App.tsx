@@ -24,6 +24,7 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
+  signInAnonymously,
   User
 } from 'firebase/auth';
 import { GoogleGenAI } from "@google/genai";
@@ -283,7 +284,41 @@ function App() {
   const [codeInput, setCodeInput] = useState('');
   const [generatedLinkCode, setGeneratedLinkCode] = useState<string | null>(null);
   const [isLinkingLoading, setIsLinkingLoading] = useState(false);
-  
+
+  // --- Identity Logic ---
+
+  // activeUid is the source of truth for all data operations
+  const activeUid = useMemo(() => {
+    if (isTMA) return linkedUid;
+    return user?.uid || null;
+  }, [isTMA, linkedUid, user]);
+
+  const isResolvingUser = useMemo(() => {
+    if (!isAuthReady) return true;
+    if (isTMA) {
+      // In TMA, we must either have a linkedUid OR be showing the linking screen
+      return !linkedUid && !showLinkingScreen;
+    }
+    // In Browser, we are resolved once isAuthReady is true (even if user is null)
+    return false;
+  }, [isAuthReady, isTMA, linkedUid, showLinkingScreen]);
+
+  // Error Handler
+  const handleFirestoreError = (error: any, operationType: string, path: string | null) => {
+    const errInfo = {
+      error: error?.message || String(error),
+      operationType,
+      path,
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        isTMA,
+        linkedUid
+      }
+    };
+    console.error('Firestore Error:', JSON.stringify(errInfo));
+    // In dev, we can show a toast or alert
+  };
+
   // Telegram Mini App Initialization
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
@@ -309,7 +344,8 @@ function App() {
           try {
             const linkDoc = await getDoc(doc(db, 'user_links', tUser.id.toString()));
             if (linkDoc.exists()) {
-              setLinkedUid(linkDoc.data().linked_uid);
+              const lUid = linkDoc.data().linked_uid;
+              setLinkedUid(lUid);
               setShowLinkingScreen(false);
             } else {
               setShowLinkingScreen(true);
@@ -334,6 +370,35 @@ function App() {
       }
     }
   }, [user, isTMA, isAuthReady]);
+
+  // Sync Anonymous Auth and Link Mapping for TMA
+  useEffect(() => {
+    const syncAnonLink = async () => {
+      if (isTMA && isAuthReady) {
+        let currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.log("Signing in anonymously for TMA security rules...");
+          try {
+            const cred = await signInAnonymously(auth);
+            currentUser = cred.user;
+          } catch (err) {
+            console.error("Anon auth failed:", err);
+            return;
+          }
+        }
+        
+        if (currentUser?.isAnonymous && linkedUid && tgUser) {
+          console.log("Syncing anon session with linked UID for rules...");
+          await setDoc(doc(db, 'user_links_anon', currentUser.uid), {
+            linked_uid: linkedUid,
+            telegramId: tgUser.id.toString(),
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+    };
+    syncAnonLink();
+  }, [isTMA, isAuthReady, linkedUid, tgUser]);
 
   // TMA MainButton Loading Indicator
   useEffect(() => {
@@ -428,12 +493,12 @@ function App() {
 
   useEffect(() => {
     // Determine which UID to use for data fetching
-    const currentUid = isTMA ? linkedUid : user?.uid;
+    const currentUid = activeUid;
     
-    console.log(`[Data Context] isTMA: ${isTMA}, user: ${user?.uid}, linkedUid: ${linkedUid}`);
+    console.log(`[Data Context] isTMA: ${isTMA}, user: ${user?.uid}, activeUid: ${activeUid}`);
     console.log(`Используемый ID для загрузки данных: ${currentUid}`);
 
-    if (!isAuthReady) return;
+    if (isResolvingUser) return;
 
     if (!currentUid) {
       setAllTasks([]);
@@ -444,18 +509,18 @@ function App() {
 
     const unsubTasks = onSnapshot(query(collection(db, 'tasks'), where('userId', '==', currentUid), orderBy('createdAt', 'desc')), (s) => {
       setAllTasks(s.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
-    });
+    }, (err) => handleFirestoreError(err, 'LIST', 'tasks'));
 
     const unsubAlgos = onSnapshot(query(collection(db, 'algorithms'), where('userId', '==', currentUid), orderBy('createdAt', 'desc')), (s) => {
       setAllAlgorithms(s.docs.map(d => ({ id: d.id, ...d.data() } as Algorithm)));
-    });
+    }, (err) => handleFirestoreError(err, 'LIST', 'algorithms'));
 
     const unsubNotes = onSnapshot(query(collection(db, 'notes'), where('userId', '==', currentUid), orderBy('createdAt', 'desc')), (s) => {
       setAllNotes(s.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
-    });
+    }, (err) => handleFirestoreError(err, 'LIST', 'notes'));
 
     return () => { unsubTasks(); unsubAlgos(); unsubNotes(); };
-  }, [user, linkedUid, isAuthReady, isTMA]);
+  }, [activeUid, isResolvingUser, isTMA]);
 
   // --- AI Actions ---
 
@@ -484,7 +549,7 @@ function App() {
   };
 
   const getDailyBriefing = async () => {
-    if (!linkedUid || tasks.length === 0) return;
+    if (!activeUid || tasks.length === 0) return;
     const ai = getGenAI();
     if (!ai) return;
     setIsAiLoading(true);
@@ -506,7 +571,7 @@ function App() {
 
   const askMemory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !linkedUid || isChatLoading) return;
+    if (!chatInput.trim() || !activeUid || isChatLoading) return;
 
     const ai = getGenAI();
     if (!ai) {
@@ -566,16 +631,16 @@ function App() {
     recognition.onend = () => setIsRecording(false);
     recognition.onresult = async (event: any) => {
       const transcript = event.results[0][0].transcript;
-      if (transcript.trim() && linkedUid) {
+      if (transcript.trim() && activeUid) {
         try {
           await addDoc(collection(db, 'notes'), {
             content: transcript,
-            userId: linkedUid,
+            userId: activeUid,
             createdAt: serverTimestamp(),
             workspace: activeWorkspace,
           });
         } catch (error) {
-          console.error("Error adding voice note: ", error);
+          handleFirestoreError(error, 'WRITE', 'notes');
         }
       }
     };
@@ -623,6 +688,16 @@ function App() {
           await setDoc(doc(db, 'user_links', tgUser.id.toString()), {
             linked_uid: data.google_uid
           });
+          
+          // Also set the anon link for rules
+          if (auth.currentUser?.isAnonymous) {
+            await setDoc(doc(db, 'user_links_anon', auth.currentUser.uid), {
+              linked_uid: data.google_uid,
+              telegramId: tgUser.id.toString(),
+              updatedAt: serverTimestamp()
+            });
+          }
+
           setLinkedUid(data.google_uid);
           setShowLinkingScreen(false);
           // Delete code after use
@@ -645,56 +720,76 @@ function App() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskForm.title.trim() || !linkedUid) return;
-    await addDoc(collection(db, 'tasks'), {
-      ...taskForm,
-      status: 'todo',
-      userId: linkedUid,
-      createdAt: serverTimestamp(),
-      dueDate: taskForm.dueDate ? Timestamp.fromDate(taskForm.dueDate) : null,
-      workspace: activeWorkspace,
-    });
-    setTaskForm({ title: '', description: '', dueDate: undefined, priority: 'medium', tags: [], subtasks: [] });
-    setIsTaskModalOpen(false);
+    if (!taskForm.title.trim() || !activeUid) return;
+    try {
+      await addDoc(collection(db, 'tasks'), {
+        ...taskForm,
+        status: 'todo',
+        userId: activeUid,
+        createdAt: serverTimestamp(),
+        dueDate: taskForm.dueDate ? Timestamp.fromDate(taskForm.dueDate) : null,
+        workspace: activeWorkspace,
+      });
+      setTaskForm({ title: '', description: '', dueDate: undefined, priority: 'medium', tags: [], subtasks: [] });
+      setIsTaskModalOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, 'WRITE', 'tasks');
+    }
   };
 
   const toggleTaskStatus = async (task: Task) => {
-    await updateDoc(doc(db, 'tasks', task.id), { status: task.status === 'done' ? 'todo' : 'done' });
+    try {
+      await updateDoc(doc(db, 'tasks', task.id), { status: task.status === 'done' ? 'todo' : 'done' });
+    } catch (error) {
+      handleFirestoreError(error, 'UPDATE', 'tasks');
+    }
   };
 
   const addNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNoteContent.trim() || !linkedUid) return;
-    await addDoc(collection(db, 'notes'), {
-      content: newNoteContent,
-      userId: linkedUid,
-      createdAt: serverTimestamp(),
-      workspace: activeWorkspace,
-    });
-    setNewNoteContent('');
+    if (!newNoteContent.trim() || !activeUid) return;
+    try {
+      await addDoc(collection(db, 'notes'), {
+        content: newNoteContent,
+        userId: activeUid,
+        createdAt: serverTimestamp(),
+        workspace: activeWorkspace,
+      });
+      setNewNoteContent('');
+    } catch (error) {
+      handleFirestoreError(error, 'WRITE', 'notes');
+    }
   };
 
   const addAlgorithm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAlgoTitle.trim() || !newAlgoContent.trim() || !linkedUid) return;
-    await addDoc(collection(db, 'algorithms'), {
-      title: newAlgoTitle,
-      content: newAlgoContent,
-      userId: linkedUid,
-      createdAt: serverTimestamp(),
-      workspace: activeWorkspace,
-    });
-    setNewAlgoTitle('');
-    setNewAlgoContent('');
+    if (!newAlgoTitle.trim() || !newAlgoContent.trim() || !activeUid) return;
+    try {
+      await addDoc(collection(db, 'algorithms'), {
+        title: newAlgoTitle,
+        content: newAlgoContent,
+        userId: activeUid,
+        createdAt: serverTimestamp(),
+        workspace: activeWorkspace,
+      });
+      setNewAlgoTitle('');
+      setNewAlgoContent('');
+    } catch (error) {
+      handleFirestoreError(error, 'WRITE', 'algorithms');
+    }
   };
 
   const updateAlgorithm = async (id: string) => {
     if (!editAlgoTitle.trim() || !editAlgoContent.trim()) return;
-    await updateDoc(doc(db, 'algorithms', id), {
-      title: editAlgoTitle,
-      content: editAlgoContent,
-    });
-    setEditingAlgoId(null);
+    try {
+      await updateDoc(doc(db, 'algorithms', id), {
+        title: editAlgoTitle,
+        content: editAlgoContent,
+      });
+      setEditingAlgoId(null);
+    } catch (error) {
+      handleFirestoreError(error, 'UPDATE', 'algorithms');
+    }
   };
 
   const startEditingAlgo = (algo: Algorithm) => {
@@ -734,11 +829,7 @@ function App() {
 
   // --- Render ---
 
-  // Loading state: waiting for auth OR (if in TMA) waiting for our linking system to resolve
-  // We only show the dashboard if we have a currentUid (linkedUid for TMA, user.uid for Web)
-  const currentUid = isTMA ? linkedUid : user?.uid;
-  const isResolvingUser = !isAuthReady || (isTMA && !linkedUid && !showLinkingScreen);
-
+  // Loading state
   if (isResolvingUser) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-swamp-50">
@@ -1072,6 +1163,17 @@ function App() {
             </div>
 
             <TabsContent value="tasks" className="space-y-6 outline-none">
+              {tasks.length === 0 && !isAiLoading && (
+                <Card className="border-dashed border-2 py-12 flex flex-col items-center justify-center text-center bg-transparent">
+                  <div className="bg-primary/10 p-4 rounded-full mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Задач пока нет</h3>
+                  <p className="text-sm text-muted-foreground max-w-[250px]">
+                    Создайте свою первую задачу или привяжите Telegram для синхронизации.
+                  </p>
+                </Card>
+              )}
               {/* Weekly Calendar View */}
               <div className="bg-white dark:bg-swamp-900 rounded-xl border border-swamp-200 dark:border-swamp-800 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-swamp-100 dark:border-swamp-800">
