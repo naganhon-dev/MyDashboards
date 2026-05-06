@@ -344,8 +344,8 @@ function App() {
           try {
             const linkDoc = await getDoc(doc(db, 'user_links', tUser.id.toString()));
             if (linkDoc.exists()) {
-              const lUid = linkDoc.data().linked_uid;
-              setLinkedUid(lUid);
+              const fUserId = linkDoc.data().userId;
+              setLinkedUid(fUserId);
               setShowLinkingScreen(false);
             } else {
               setShowLinkingScreen(true);
@@ -390,7 +390,8 @@ function App() {
         if (currentUser?.isAnonymous && linkedUid && tgUser) {
           console.log("Syncing anon session with linked UID for rules...");
           await setDoc(doc(db, 'user_links_anon', currentUser.uid), {
-            linked_uid: linkedUid,
+            userId: linkedUid, // Primary identifier
+            linked_uid: linkedUid, // Legacy fallback for rules
             telegramId: tgUser.id.toString(),
             updatedAt: serverTimestamp()
           });
@@ -684,16 +685,19 @@ function App() {
         const expiresAtMs = data.expiresAt.toMillis();
         
         if (expiresAtMs > nowMs) {
-          // Valid code
-          await setDoc(doc(db, 'user_links', tgUser.id.toString()), {
-            linked_uid: data.google_uid
+          // Valid code - create link using 'userId' field precisely as requested
+          const tgId = tgUser.id.toString();
+          await setDoc(doc(db, 'user_links', tgId), {
+            userId: data.google_uid,
+            linkedAt: serverTimestamp()
           });
           
           // Also set the anon link for rules
           if (auth.currentUser?.isAnonymous) {
             await setDoc(doc(db, 'user_links_anon', auth.currentUser.uid), {
-              linked_uid: data.google_uid,
-              telegramId: tgUser.id.toString(),
+              userId: data.google_uid, // Consistency check: use userId here too
+              linked_uid: data.google_uid, // keeping legacy for rules if needed, but updating rules next
+              telegramId: tgId,
               updatedAt: serverTimestamp()
             });
           }

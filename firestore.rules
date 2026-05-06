@@ -39,8 +39,10 @@ service cloud.firestore {
     function isAllowedToAccess(userId) {
       return isAuthenticated() && (
         request.auth.uid == userId || (
-          exists(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)).data.linked_uid == userId
+          exists(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)) && (
+            get(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)).data.userId == userId ||
+            get(/databases/$(database)/documents/user_links_anon/$(request.auth.uid)).data.linked_uid == userId
+          )
         )
       );
     }
