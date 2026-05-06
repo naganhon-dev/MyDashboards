@@ -291,7 +291,13 @@ function App() {
 
   // activeUid is the source of truth for all data operations
   const activeUid = useMemo(() => {
-    if (isTMA) return linkedUid;
+    if (isTMA) {
+      if (linkedUid) {
+        console.log("Using Linked Google UID for data:", linkedUid);
+        return linkedUid;
+      }
+      return null; // Don't fallback to TG ID for tasks
+    }
     return user?.uid || null;
   }, [isTMA, linkedUid, user]);
 
@@ -318,7 +324,22 @@ function App() {
       }
     };
     console.error('Firestore Error:', JSON.stringify(errInfo));
-    // In dev, we can show a toast or alert
+  };
+
+  const handleLogout = async () => {
+    if (isTMA) {
+      console.log("Logging out from TMA (clearing link)...");
+      setLinkedUid(null);
+      setShowLinkingScreen(true);
+      // Optional: hide anon link in DB
+      if (auth.currentUser) {
+        try {
+          await deleteDoc(doc(db, 'user_links_anon', auth.currentUser.uid)).catch(() => {});
+        } catch(e) {}
+      }
+    } else {
+      await signOut(auth);
+    }
   };
 
   // Telegram Mini App Initialization
@@ -495,10 +516,6 @@ function App() {
         setLoginError(`Ошибка входа: ${error.message}`);
       }
     }
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
   };
 
   // --- Data Fetching ---
@@ -896,7 +913,7 @@ function App() {
               <div className="bg-primary p-1.5 rounded-lg shadow-sm">
                 <BrainCircuit className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-xl font-bold tracking-tight dark:text-white hidden sm:block">Планер</h1>
+              <h1 className="text-xl font-bold tracking-tight dark:text-white hidden sm:block">Планер проебщика</h1>
             </div>
             
             <div className="flex items-center gap-2 sm:hidden">
@@ -934,7 +951,7 @@ function App() {
                 {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-swamp-600" />}
               </Button>
               <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8">
-                <LogOut className="w-4 h-4 text-muted-foreground" />
+                <LogOut className="w-4 h-4 text-red-500" />
               </Button>
               {currentPhotoURL ? (
                 <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
