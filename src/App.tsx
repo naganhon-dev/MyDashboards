@@ -274,7 +274,10 @@ function App() {
   
   // Linking states
   const [linkedUid, setLinkedUid] = useState<string | null>(null);
-  const [isTMA, setIsTMA] = useState(() => typeof window !== 'undefined' && !!window.Telegram?.WebApp?.initData);
+  const [isTMA, setIsTMA] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !!(window.Telegram?.WebApp?.initData);
+  });
   const [tgUser, setTgUser] = useState<{id: number, first_name: string} | null>(null);
   const [showLinkingScreen, setShowLinkingScreen] = useState(false);
   const [codeInput, setCodeInput] = useState('');
@@ -283,9 +286,9 @@ function App() {
   
   // Telegram Mini App Initialization
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
       const tg = window.Telegram.WebApp;
-      tg.ready(); // Call immediately for iOS
+      tg.ready();
       tg.expand();
       
       const initTMA = async () => {
@@ -315,13 +318,11 @@ function App() {
             console.error("Error checking user link:", error);
             setShowLinkingScreen(true);
           }
-        } else {
-          if (!tg.initData) {
-            console.warn("Пожалуйста, откройте это приложение в Telegram");
-          }
         }
       };
       initTMA();
+    } else {
+      setIsTMA(false);
     }
   }, []);
 
