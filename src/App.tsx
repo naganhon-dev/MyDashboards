@@ -1200,9 +1200,7 @@ function App() {
                     setTaskForm({ title: '', description: '', dueDate: undefined, dueTime: '12:00', priority: 'medium', tags: [], subtasks: [] });
                   }
                 }}>
-                  <DialogTrigger asChild>
-                    <Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto overflow-hidden"><Plus className="w-4 h-4" /> Создать задачу</Button>
-                  </DialogTrigger>
+                  <DialogTrigger render={<Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto overflow-hidden"><Plus className="w-4 h-4" /> Создать задачу</Button>} />
                   <DialogContent className="sm:max-w-[500px] dark:bg-swamp-900 dark:border-swamp-800">
                     <form onSubmit={handleCreateTask}>
                       <DialogHeader><DialogTitle className="dark:text-white">{editingTaskId ? 'Редактировать' : 'Новая'} задача</DialogTitle></DialogHeader>
@@ -1220,9 +1218,7 @@ function App() {
                             <Label className="dark:text-swamp-300">Срок</Label>
                             <div className="flex gap-2">
                               <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button variant="outline" className="w-[140px] justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">{taskForm.dueDate ? format(taskForm.dueDate, "dd.MM.yyyy") : "Дата"}</span></Button>
-                                </PopoverTrigger>
+                                <PopoverTrigger render={<Button variant="outline" className="w-[140px] justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">{taskForm.dueDate ? format(taskForm.dueDate, "dd.MM.yyyy") : "Дата"}</span></Button>} />
                                 <PopoverContent className="w-auto p-0 dark:bg-swamp-900 dark:border-swamp-800"><Calendar mode="single" selected={taskForm.dueDate} onSelect={(d) => setTaskForm({...taskForm, dueDate: d})} locale={ru} /></PopoverContent>
                               </Popover>
                               <Input type="time" className="w-full flex-1 dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
