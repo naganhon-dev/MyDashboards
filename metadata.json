@@ -2,5 +2,7 @@
   "name": "Планер проебщика",
   "description": "Интеллектуальный помощник для тех, кто хочет перестать всё забывать и начать всё успевать.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

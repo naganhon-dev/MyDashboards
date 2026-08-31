@@ -60,6 +60,10 @@ service cloud.firestore {
              (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
              (!('priority' in data) || (data.priority in ['low', 'medium', 'high'])) &&
              (!('dueDate' in data) || (data.dueDate is timestamp || data.dueDate == null)) &&
+             (!('dueDates' in data) || (data.dueDates is list)) &&
+             (!('completedDates' in data) || (data.completedDates is list)) &&
+             (!('recurrence' in data) || (data.recurrence is map || data.recurrence == null)) &&
+             (!('workspace' in data) || (data.workspace in ['work', 'personal'])) &&
              (!('tags' in data) || (data.tags is list)) &&
              (!('subtasks' in data) || (data.subtasks is list));
     }

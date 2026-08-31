@@ -79,7 +79,8 @@ import {
   X,
   Tag as TagIcon,
   BrainCircuit,
-  Pencil
+  Pencil,
+  Repeat
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { format, addDays, startOfToday, isSameDay, eachDayOfInterval, isToday, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
@@ -145,6 +146,12 @@ interface Task {
   userId: string;
   createdAt: Timestamp;
   dueDate?: Timestamp | null;
+  dueDates?: Timestamp[];
+  recurrence?: {
+    type: 'none' | 'daily' | 'weekly' | 'monthly';
+    daysOfWeek?: number[];
+  } | null;
+  completedDates?: string[];
   tags?: string[];
   subtasks?: Subtask[];
   workspace?: 'work' | 'personal';
@@ -467,6 +474,10 @@ function App() {
     title: '',
     description: '',
     dueDate: undefined as Date | undefined,
+    dueDates: [] as Date[],
+    dateMode: 'single' as 'single' | 'multiple' | 'routine',
+    recurrenceType: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
+    recurrenceDays: [] as number[], // [0-6] where 0 is Sunday, 1 is Monday...
     dueTime: '12:00',
     priority: 'medium' as 'low' | 'medium' | 'high',
     tags: [] as string[],
@@ -754,12 +765,64 @@ function App() {
 
   // --- CRUD Actions ---
 
+  const isTaskOnDate = (task: Task, date: Date) => {
+    // 1. Check custom list of dates
+    if (task.dueDates && task.dueDates.length > 0) {
+      return task.dueDates.some(ts => isSameDay(ts.toDate(), date));
+    }
+    
+    // 2. Check recurrence
+    if (task.recurrence && task.recurrence.type && task.recurrence.type !== 'none') {
+      const type = task.recurrence.type;
+      
+      const creationDate = task.createdAt ? task.createdAt.toDate() : new Date();
+      const testDateStart = new Date(date);
+      testDateStart.setHours(23, 59, 59, 999);
+      if (testDateStart < creationDate) {
+        return false;
+      }
+      
+      if (type === 'daily') {
+        return true;
+      }
+      if (type === 'weekly') {
+        const dayOfWeek = date.getDay();
+        if (task.recurrence.daysOfWeek && task.recurrence.daysOfWeek.length > 0) {
+          return task.recurrence.daysOfWeek.includes(dayOfWeek);
+        }
+        const baseDate = task.dueDate ? task.dueDate.toDate() : creationDate;
+        return baseDate.getDay() === dayOfWeek;
+      }
+      if (type === 'monthly') {
+        const baseDate = task.dueDate ? task.dueDate.toDate() : creationDate;
+        return baseDate.getDate() === date.getDate();
+      }
+    }
+
+    // 3. Check single dueDate
+    if (task.dueDate) {
+      return isSameDay(task.dueDate.toDate(), date);
+    }
+
+    // 4. If no dates are set, show only on today
+    return isSameDay(date, startOfToday());
+  };
+
+  const isTaskCompletedOnDate = (task: Task, date: Date) => {
+    const isRecurringOrMulti = !!(task.recurrence && task.recurrence.type !== 'none') || !!(task.dueDates && task.dueDates.length > 0);
+    if (isRecurringOrMulti) {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      return !!(task.completedDates && task.completedDates.includes(dateStr));
+    }
+    return task.status === 'done';
+  };
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.title.trim() || !activeUid) return;
     try {
       let finalDueDate: Timestamp | null = null;
-      if (taskForm.dueDate) {
+      if (taskForm.dateMode === 'single' && taskForm.dueDate) {
         const d = new Date(taskForm.dueDate);
         if (taskForm.dueTime) {
           const [hours, minutes] = taskForm.dueTime.split(':');
@@ -770,6 +833,28 @@ function App() {
         finalDueDate = Timestamp.fromDate(d);
       }
 
+      let finalDueDates: Timestamp[] = [];
+      if (taskForm.dateMode === 'multiple' && taskForm.dueDates && taskForm.dueDates.length > 0) {
+        finalDueDates = taskForm.dueDates.map(dDate => {
+          const d = new Date(dDate);
+          if (taskForm.dueTime) {
+            const [hours, minutes] = taskForm.dueTime.split(':');
+            if (hours && minutes) {
+              d.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+            }
+          }
+          return Timestamp.fromDate(d);
+        });
+      }
+
+      let finalRecurrence = null;
+      if (taskForm.dateMode === 'routine' && taskForm.recurrenceType !== 'none') {
+        finalRecurrence = {
+          type: taskForm.recurrenceType,
+          daysOfWeek: taskForm.recurrenceType === 'weekly' ? taskForm.recurrenceDays : [],
+        };
+      }
+
       const taskData = {
         title: taskForm.title,
         description: taskForm.description || '',
@@ -777,6 +862,8 @@ function App() {
         tags: taskForm.tags || [],
         subtasks: taskForm.subtasks || [],
         dueDate: finalDueDate,
+        dueDates: finalDueDates,
+        recurrence: finalRecurrence,
       };
 
       if (editingTaskId) {
@@ -790,7 +877,19 @@ function App() {
           workspace: activeWorkspace,
         });
       }
-      setTaskForm({ title: '', description: '', dueDate: undefined, dueTime: '12:00', priority: 'medium', tags: [], subtasks: [] });
+      setTaskForm({ 
+        title: '', 
+        description: '', 
+        dueDate: undefined, 
+        dueDates: [],
+        dateMode: 'single',
+        recurrenceType: 'none',
+        recurrenceDays: [],
+        dueTime: '12:00', 
+        priority: 'medium', 
+        tags: [], 
+        subtasks: [] 
+      });
       setEditingTaskId(null);
       setIsTaskModalOpen(false);
     } catch (error) {
@@ -805,10 +904,19 @@ function App() {
       dDate = task.dueDate.toDate();
       dTime = format(dDate, 'HH:mm');
     }
+    const dDates = task.dueDates ? task.dueDates.map(ts => ts.toDate()) : [];
+    const dMode = task.recurrence && task.recurrence.type !== 'none'
+      ? 'routine'
+      : (task.dueDates && task.dueDates.length > 0 ? 'multiple' : 'single');
+
     setTaskForm({
       title: task.title,
       description: task.description || '',
       dueDate: dDate,
+      dueDates: dDates,
+      dateMode: dMode,
+      recurrenceType: task.recurrence?.type || 'none',
+      recurrenceDays: task.recurrence?.daysOfWeek || [],
       dueTime: dTime,
       priority: task.priority,
       tags: task.tags || [],
@@ -818,9 +926,22 @@ function App() {
     setIsTaskModalOpen(true);
   };
 
-  const toggleTaskStatus = async (task: Task) => {
+  const toggleTaskStatus = async (task: Task, date: Date = selectedDate) => {
+    const isRecurringOrMulti = !!(task.recurrence && task.recurrence.type !== 'none') || !!(task.dueDates && task.dueDates.length > 0);
     try {
-      await updateDoc(doc(db, 'tasks', task.id), { status: task.status === 'done' ? 'todo' : 'done' });
+      if (isRecurringOrMulti) {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const completedList = task.completedDates || [];
+        let newCompletedList: string[];
+        if (completedList.includes(dateStr)) {
+          newCompletedList = completedList.filter(d => d !== dateStr);
+        } else {
+          newCompletedList = [...completedList, dateStr];
+        }
+        await updateDoc(doc(db, 'tasks', task.id), { completedDates: newCompletedList });
+      } else {
+        await updateDoc(doc(db, 'tasks', task.id), { status: task.status === 'done' ? 'todo' : 'done' });
+      }
     } catch (error) {
       handleFirestoreError(error, 'UPDATE', 'tasks');
     }
@@ -885,7 +1006,7 @@ function App() {
     return tasks.filter(t => {
       const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            t.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDate = t.dueDate ? isSameDay(t.dueDate.toDate(), selectedDate) : isSameDay(selectedDate, startOfToday());
+      const matchesDate = isTaskOnDate(t, selectedDate);
       return matchesSearch && matchesDate;
     });
   }, [tasks, selectedDate, searchQuery]);
@@ -893,10 +1014,22 @@ function App() {
   const upcomingTasks = useMemo(() => {
     const today = startOfToday();
     return tasks
-      .filter(t => t.status !== 'done' && t.dueDate && t.dueDate.toDate() >= today)
+      .filter(t => {
+        const isRecurring = t.recurrence && t.recurrence.type !== 'none';
+        const hasFutureDueDates = t.dueDates && t.dueDates.some(d => d.toDate() >= today);
+        const hasFutureDueDate = t.dueDate && t.dueDate.toDate() >= today && t.status !== 'done';
+        return hasFutureDueDate || hasFutureDueDates || isRecurring;
+      })
       .sort((a, b) => {
-        if (!a.dueDate || !b.dueDate) return 0;
-        return a.dueDate.toDate().getTime() - b.dueDate.toDate().getTime();
+        const getNextDate = (t: Task) => {
+          if (t.dueDate) return t.dueDate.toDate().getTime();
+          if (t.dueDates && t.dueDates.length > 0) {
+            const futureDates = t.dueDates.map(d => d.toDate()).filter(d => d >= today);
+            if (futureDates.length > 0) return Math.min(...futureDates.map(d => d.getTime()));
+          }
+          return today.getTime();
+        };
+        return getNextDate(a) - getNextDate(b);
       })
       .slice(0, 10);
   }, [tasks]);
@@ -1197,11 +1330,23 @@ function App() {
                   setIsTaskModalOpen(open);
                   if (!open) {
                     setEditingTaskId(null);
-                    setTaskForm({ title: '', description: '', dueDate: undefined, dueTime: '12:00', priority: 'medium', tags: [], subtasks: [] });
+                    setTaskForm({ 
+                      title: '', 
+                      description: '', 
+                      dueDate: undefined, 
+                      dueDates: [],
+                      dateMode: 'single',
+                      recurrenceType: 'none',
+                      recurrenceDays: [],
+                      dueTime: '12:00', 
+                      priority: 'medium', 
+                      tags: [], 
+                      subtasks: [] 
+                    });
                   }
                 }}>
                   <DialogTrigger render={<Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto overflow-hidden"><Plus className="w-4 h-4" /> Создать задачу</Button>} />
-                  <DialogContent className="sm:max-w-[500px] dark:bg-swamp-900 dark:border-swamp-800">
+                  <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto dark:bg-swamp-900 dark:border-swamp-800">
                     <form onSubmit={handleCreateTask}>
                       <DialogHeader><DialogTitle className="dark:text-white">{editingTaskId ? 'Редактировать' : 'Новая'} задача</DialogTitle></DialogHeader>
                       <div className="grid gap-4 py-4">
@@ -1211,19 +1356,167 @@ function App() {
                         </div>
                         <div className="grid gap-2">
                           <Label className="dark:text-swamp-300">Описание (необязательно)</Label>
-                          <Textarea className="min-h-[80px] dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.description} onChange={(e) => setTaskForm({...taskForm, description: e.target.value})} />
+                          <Textarea className="min-h-[70px] dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.description} onChange={(e) => setTaskForm({...taskForm, description: e.target.value})} />
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="grid gap-2">
-                            <Label className="dark:text-swamp-300">Срок</Label>
-                            <div className="flex gap-2">
+
+                        {/* Planning Mode Selector */}
+                        <div className="grid gap-2">
+                          <Label className="dark:text-swamp-300">Режим планирования</Label>
+                          <div className="grid grid-cols-3 gap-1.5 p-1 bg-swamp-100 dark:bg-swamp-800 rounded-lg text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setTaskForm({ ...taskForm, dateMode: 'single' })}
+                              className={cn(
+                                "py-1.5 px-2 rounded-md font-medium transition-all text-center",
+                                taskForm.dateMode === 'single' ? "bg-white dark:bg-swamp-700 shadow-sm text-primary dark:text-white" : "text-swamp-600 dark:text-swamp-400 hover:text-swamp-900"
+                              )}
+                            >
+                              Один день
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTaskForm({ ...taskForm, dateMode: 'multiple' })}
+                              className={cn(
+                                "py-1.5 px-2 rounded-md font-medium transition-all text-center",
+                                taskForm.dateMode === 'multiple' ? "bg-white dark:bg-swamp-700 shadow-sm text-primary dark:text-white" : "text-swamp-600 dark:text-swamp-400 hover:text-swamp-900"
+                              )}
+                            >
+                              Несколько дат
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTaskForm({ ...taskForm, dateMode: 'routine', recurrenceType: taskForm.recurrenceType === 'none' ? 'daily' : taskForm.recurrenceType })}
+                              className={cn(
+                                "py-1.5 px-2 rounded-md font-medium transition-all text-center",
+                                taskForm.dateMode === 'routine' ? "bg-white dark:bg-swamp-700 shadow-sm text-primary dark:text-white" : "text-swamp-600 dark:text-swamp-400 hover:text-swamp-900"
+                              )}
+                            >
+                              Рутина
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Dynamic Date & Recurrence Controls */}
+                        {taskForm.dateMode === 'single' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                              <Label className="dark:text-swamp-300">Дата</Label>
                               <Popover>
-                                <PopoverTrigger render={<Button variant="outline" className="w-[140px] justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">{taskForm.dueDate ? format(taskForm.dueDate, "dd.MM.yyyy") : "Дата"}</span></Button>} />
+                                <PopoverTrigger render={<Button variant="outline" className="w-full justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">{taskForm.dueDate ? format(taskForm.dueDate, "dd.MM.yyyy") : "Выбрать дату"}</span></Button>} />
                                 <PopoverContent className="w-auto p-0 dark:bg-swamp-900 dark:border-swamp-800"><Calendar mode="single" selected={taskForm.dueDate} onSelect={(d) => setTaskForm({...taskForm, dueDate: d})} locale={ru} /></PopoverContent>
                               </Popover>
-                              <Input type="time" className="w-full flex-1 dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label className="dark:text-swamp-300">Время</Label>
+                              <Input type="time" className="w-full dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
                             </div>
                           </div>
+                        )}
+
+                        {taskForm.dateMode === 'multiple' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="grid gap-2">
+                                <Label className="dark:text-swamp-300">Календарь дат ({taskForm.dueDates.length})</Label>
+                                <Popover>
+                                  <PopoverTrigger render={<Button variant="outline" className="w-full justify-start dark:border-swamp-700 dark:text-swamp-300"><CalendarIcon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">{taskForm.dueDates.length > 0 ? `Выбрано: ${taskForm.dueDates.length}` : "Выбрать даты..."}</span></Button>} />
+                                  <PopoverContent className="w-auto p-0 dark:bg-swamp-900 dark:border-swamp-800">
+                                    <Calendar 
+                                      mode="multiple" 
+                                      selected={taskForm.dueDates} 
+                                      onSelect={(dates) => setTaskForm({ ...taskForm, dueDates: (dates as Date[]) || [] })} 
+                                      locale={ru} 
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <div className="grid gap-2">
+                                <Label className="dark:text-swamp-300">Время</Label>
+                                <Input type="time" className="w-full dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
+                              </div>
+                            </div>
+                            {taskForm.dueDates.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 p-2 bg-swamp-50 dark:bg-swamp-800/50 rounded-lg border border-swamp-100 dark:border-swamp-700 max-h-28 overflow-y-auto">
+                                {taskForm.dueDates.map((d, idx) => (
+                                  <span key={idx} className="inline-flex items-center gap-1 text-[11px] bg-white dark:bg-swamp-700 text-swamp-800 dark:text-swamp-200 px-2 py-0.5 rounded-md border border-swamp-200 dark:border-swamp-600">
+                                    {format(d, "dd.MM.yyyy")}
+                                    <button 
+                                      type="button" 
+                                      onClick={() => setTaskForm({ ...taskForm, dueDates: taskForm.dueDates.filter((_, i) => i !== idx) })}
+                                      className="text-muted-foreground hover:text-destructive"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {taskForm.dateMode === 'routine' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="grid gap-2">
+                                <Label className="dark:text-swamp-300">Повторение</Label>
+                                <select 
+                                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm dark:border-swamp-700 dark:text-swamp-300" 
+                                  value={taskForm.recurrenceType} 
+                                  onChange={(e) => setTaskForm({...taskForm, recurrenceType: e.target.value as any})}
+                                >
+                                  <option value="daily">Каждый день</option>
+                                  <option value="weekly">Каждую неделю</option>
+                                  <option value="monthly">Каждый месяц</option>
+                                </select>
+                              </div>
+                              <div className="grid gap-2">
+                                <Label className="dark:text-swamp-300">Время</Label>
+                                <Input type="time" className="w-full dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
+                              </div>
+                            </div>
+
+                            {taskForm.recurrenceType === 'weekly' && (
+                              <div className="grid gap-2">
+                                <Label className="dark:text-swamp-300 text-xs">Дни недели</Label>
+                                <div className="flex gap-1">
+                                  {[
+                                    { label: 'Пн', day: 1 },
+                                    { label: 'Вт', day: 2 },
+                                    { label: 'Ср', day: 3 },
+                                    { label: 'Чт', day: 4 },
+                                    { label: 'Пт', day: 5 },
+                                    { label: 'Сб', day: 6 },
+                                    { label: 'Вс', day: 0 }
+                                  ].map(({ label, day }) => {
+                                    const isSelected = taskForm.recurrenceDays.includes(day);
+                                    return (
+                                      <button
+                                        key={day}
+                                        type="button"
+                                        onClick={() => {
+                                          const nextDays = isSelected 
+                                            ? taskForm.recurrenceDays.filter(d => d !== day)
+                                            : [...taskForm.recurrenceDays, day];
+                                          setTaskForm({ ...taskForm, recurrenceDays: nextDays });
+                                        }}
+                                        className={cn(
+                                          "flex-1 py-1.5 rounded text-xs font-medium transition-colors border",
+                                          isSelected 
+                                            ? "bg-primary text-primary-foreground border-primary" 
+                                            : "bg-swamp-100 dark:bg-swamp-800 text-swamp-700 dark:text-swamp-300 border-transparent hover:border-swamp-300"
+                                        )}
+                                      >
+                                        {label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="grid gap-2">
                             <Label className="dark:text-swamp-300">Приоритет</Label>
                             <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm dark:border-swamp-700 dark:text-swamp-300" value={taskForm.priority} onChange={(e) => setTaskForm({...taskForm, priority: e.target.value as any})}>
@@ -1233,6 +1526,7 @@ function App() {
                             </select>
                           </div>
                         </div>
+
                         <div className="grid gap-2">
                           <div className="flex justify-between items-center">
                             <Label className="dark:text-swamp-300">Подзадачи</Label>
@@ -1240,7 +1534,7 @@ function App() {
                               <Sparkles className="w-3 h-3 shrink-0" /> {isAiLoading ? "Генерация..." : "AI Подзадачи"}
                             </Button>
                           </div>
-                          <div className="space-y-2 max-h-[150px] overflow-y-auto p-2 border rounded-md bg-swamp-50 dark:bg-swamp-800 dark:border-swamp-700">
+                          <div className="space-y-2 max-h-[120px] overflow-y-auto p-2 border rounded-md bg-swamp-50 dark:bg-swamp-800 dark:border-swamp-700">
                             {taskForm.subtasks.map((st, i) => (
                               <div key={i} className="flex items-center gap-2 text-sm dark:text-swamp-300">
                                 <Circle className="w-3 h-3 text-swamp-400 shrink-0" /> {st.title}
@@ -1293,8 +1587,8 @@ function App() {
                     const isSelected = isSameDay(day, selectedDate);
                     const isTodayDate = isToday(day);
                     
-                    const dayTasks = tasks.filter(t => t.dueDate && isSameDay(t.dueDate.toDate(), day));
-                    const hasUncompleted = dayTasks.some(t => t.status !== 'done');
+                    const dayTasks = tasks.filter(t => isTaskOnDate(t, day));
+                    const hasUncompleted = dayTasks.some(t => !isTaskCompletedOnDate(t, day));
                     const isOverdue = hasUncompleted && day < startOfToday();
 
                     return (
@@ -1334,27 +1628,44 @@ function App() {
                 <div className="space-y-4">
                   <h3 className="font-bold text-swamp-800 dark:text-swamp-200 flex items-center gap-2"><Circle className="w-4 h-4 text-amber-500" /> В работе</h3>
                   <div className="space-y-3">
-                    {filteredTasks.filter(t => t.status !== 'done').map(task => (
+                    {filteredTasks.filter(t => !isTaskCompletedOnDate(t, selectedDate)).map(task => (
                       <Card key={task.id} className="group hover:shadow-md transition-all border-l-4 border-l-primary dark:bg-swamp-900 dark:border-swamp-800">
                         <CardContent className="p-4 flex items-start gap-3">
-                          <Checkbox checked={false} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1 dark:border-swamp-700" />
+                          <Checkbox checked={false} onCheckedChange={() => toggleTaskStatus(task, selectedDate)} className="mt-1 dark:border-swamp-700" />
                           <div className="flex-1">
                             <h4 className="font-semibold text-sm dark:text-white leading-tight">{task.title}</h4>
                             {task.description && (
                               <p className="text-xs text-muted-foreground mt-1 line-clamp-2 dark:text-swamp-500">{task.description}</p>
                             )}
-                            <div className="mt-2 flex items-center gap-3">
-                              {task.dueDate && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {task.dueDate && !task.dueDates?.length && (!task.recurrence || task.recurrence.type === 'none') && (
                                 <span className={cn("flex items-center gap-1 text-[10px] font-medium", 
                                   task.dueDate.toDate() < startOfToday() ? "text-red-500" : "text-swamp-500"
                                 )}>
                                   <Clock className="w-3 h-3" /> {format(task.dueDate.toDate(), 'dd MMM HH:mm', { locale: ru })}
                                 </span>
                               )}
+                              {task.dueDates && task.dueDates.length > 0 && (
+                                <span className="flex items-center gap-1 text-[10px] font-medium text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800">
+                                  <CalendarIcon className="w-3 h-3" /> {task.dueDates.length} дат
+                                </span>
+                              )}
+                              {task.recurrence && task.recurrence.type && task.recurrence.type !== 'none' && (
+                                <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                  <Repeat className="w-3 h-3" /> {
+                                    task.recurrence.type === 'daily' ? 'Каждый день' :
+                                    task.recurrence.type === 'weekly' 
+                                      ? (task.recurrence.daysOfWeek && task.recurrence.daysOfWeek.length > 0 
+                                          ? `Еженедельно (${task.recurrence.daysOfWeek.map(d => ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][d]).join(', ')})` 
+                                          : 'Еженедельно')
+                                      : 'Ежемесячно'
+                                  }
+                                </span>
+                              )}
                               <span className={cn("text-[10px] font-medium px-2 hover:bg-opacity-80 transition-colors uppercase rounded-full border", 
-                                task.priority === 'high' ? "border-red-200 text-red-600 bg-red-50" : 
-                                task.priority === 'medium' ? "border-amber-200 text-amber-600 bg-amber-50" : 
-                                "border-sky-200 text-sky-600 bg-sky-50"
+                                task.priority === 'high' ? "border-red-200 text-red-600 bg-red-50 dark:bg-red-950/40 dark:border-red-900" : 
+                                task.priority === 'medium' ? "border-amber-200 text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-900" : 
+                                "border-sky-200 text-sky-600 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-900"
                               )}>
                                 {task.priority === 'high' ? 'Высокий' : task.priority === 'medium' ? 'Средний' : 'Низкий'}
                               </span>
@@ -1382,10 +1693,10 @@ function App() {
                 <div className="space-y-4">
                   <h3 className="font-bold text-swamp-800 dark:text-swamp-200 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500" /> Завершено</h3>
                   <div className="space-y-3">
-                    {filteredTasks.filter(t => t.status === 'done').map(task => (
+                    {filteredTasks.filter(t => isTaskCompletedOnDate(t, selectedDate)).map(task => (
                       <Card key={task.id} className="bg-swamp-100/50 dark:bg-swamp-900/50 border-none opacity-70">
                         <CardContent className="p-3 flex items-start gap-3">
-                          <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1" />
+                          <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task, selectedDate)} className="mt-1" />
                           <div className="flex-1 flex flex-col justify-center">
                             <span className="text-sm line-through text-muted-foreground dark:text-swamp-500">{task.title}</span>
                           </div>
@@ -1523,20 +1834,45 @@ function App() {
             <CardContent>
               <ScrollArea className="h-[calc(100vh-200px)]">
                 <div className="space-y-3 pr-3">
-                  {upcomingTasks.length > 0 ? upcomingTasks.map(task => (
-                    <div key={task.id} className="p-3 bg-swamp-50 dark:bg-swamp-800/50 rounded-lg border border-swamp-100 dark:border-swamp-800 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => {
-                      if (task.dueDate) setSelectedDate(task.dueDate.toDate());
-                      setActiveTab('tasks');
-                    }}>
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-sm font-medium dark:text-swamp-200 line-clamp-2">{task.title}</h4>
+                  {upcomingTasks.length > 0 ? upcomingTasks.map(task => {
+                    const nextDate = (() => {
+                      if (task.dueDate) return task.dueDate.toDate();
+                      if (task.dueDates && task.dueDates.length > 0) {
+                        const futureDates = task.dueDates.map(d => d.toDate()).filter(d => d >= startOfToday());
+                        if (futureDates.length > 0) return futureDates[0];
+                        return task.dueDates[0].toDate();
+                      }
+                      return undefined;
+                    })();
+
+                    return (
+                      <div key={task.id} className="p-3 bg-swamp-50 dark:bg-swamp-800/50 rounded-lg border border-swamp-100 dark:border-swamp-800 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => {
+                        if (nextDate) setSelectedDate(nextDate);
+                        setActiveTab('tasks');
+                      }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="text-sm font-medium dark:text-swamp-200 line-clamp-2">{task.title}</h4>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-swamp-500 dark:text-swamp-400">
+                          {task.recurrence && task.recurrence.type && task.recurrence.type !== 'none' ? (
+                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                              <Repeat className="w-3 h-3" /> 
+                              {task.recurrence.type === 'daily' ? 'Каждый день' : task.recurrence.type === 'weekly' ? 'Еженедельно' : 'Ежемесячно'}
+                            </span>
+                          ) : task.dueDates && task.dueDates.length > 0 ? (
+                            <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-medium">
+                              <CalendarIcon className="w-3 h-3" /> {nextDate ? format(nextDate, 'd MMM', { locale: ru }) : ''} ({task.dueDates.length} дат)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <CalendarIcon className="w-3 h-3" />
+                              {task.dueDate ? format(task.dueDate.toDate(), 'd MMMM, HH:mm', { locale: ru }) : 'Без даты'}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="mt-2 flex items-center gap-2 text-[10px] text-swamp-500 dark:text-swamp-400">
-                        <CalendarIcon className="w-3 h-3" />
-                        {task.dueDate ? format(task.dueDate.toDate(), 'd MMMM, HH:mm', { locale: ru }) : 'Без даты'}
-                      </div>
-                    </div>
-                  )) : (
+                    );
+                  }) : (
                     <p className="text-xs text-swamp-500 text-center py-4">Нет предстоящих задач</p>
                   )}
                 </div>
