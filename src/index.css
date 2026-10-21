@@ -1,141 +1,115 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
+/* No dark theme in the family: keep the primitives' dark: classes inert instead of following the OS */
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-    --color-swamp-50: #f2f6f0;
-    --color-swamp-100: #e1ebe0;
-    --color-swamp-200: #c4d8c2;
-    --color-swamp-300: #9cbb99;
-    --color-swamp-400: #71986d;
-    --color-swamp-500: #527c4f;
-    --color-swamp-600: #3f623d;
-    --color-swamp-700: #344e33;
-    --color-swamp-800: #2b3e2b;
-    --color-swamp-900: #1a261a;
-    --color-swamp-950: #0d140d;
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+/* Same token names as MailFlow and Retention. The planner's own gradient is plum
+   (lavender → violet → plum); the personal workspace swaps it for sun (yellow → coral). */
+@theme {
+  --font-sans: "Onest", system-ui, sans-serif;
+  --font-display: "Unbounded", "Onest", sans-serif;
+
+  --color-ground: #f4f2f8;
+  --color-paper: #ffffff;
+  --color-ink: #1d1a26;
+  --color-ink-2: #3a3448;
+  --color-faint: #6c657a;
+  --color-line: #e2dfea;
+  --color-line-2: #d6d1e2;
+  --color-wash: #ece8f5;
+  --color-track: #f1eef7;
+
+  --color-rust: #b8502a;
+  --color-rust-text: #9c4422;
+  --color-rust-wash: #f8e9e2;
 }
 
+/* Workspace accent: everything "brand" reads these, so switching workspace recolours the app */
 :root {
-    --background: var(--tg-theme-bg-color, oklch(1 0 0));
-    --foreground: var(--tg-theme-text-color, oklch(0.145 0 0));
-    --card: var(--tg-theme-secondary-bg-color, oklch(1 0 0));
-    --card-foreground: var(--tg-theme-text-color, oklch(0.145 0 0));
-    --popover: var(--tg-theme-secondary-bg-color, oklch(1 0 0));
-    --popover-foreground: var(--tg-theme-text-color, oklch(0.145 0 0));
-    --primary: var(--tg-theme-button-color, oklch(0.205 0 0));
-    --primary-foreground: var(--tg-theme-button-text-color, oklch(0.985 0 0));
-    --secondary: var(--tg-theme-secondary-bg-color, oklch(0.97 0 0));
-    --secondary-foreground: var(--tg-theme-button-color, oklch(0.205 0 0));
-    --muted: var(--tg-theme-secondary-bg-color, oklch(0.97 0 0));
-    --muted-foreground: var(--tg-theme-hint-color, oklch(0.556 0 0));
-    --accent: var(--tg-theme-secondary-bg-color, oklch(0.97 0 0));
-    --accent-foreground: var(--tg-theme-button-color, oklch(0.205 0 0));
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: var(--tg-theme-hint-color, oklch(0.922 0 0));
-    --input: var(--tg-theme-hint-color, oklch(0.922 0 0));
-    --ring: var(--tg-theme-button-color, oklch(0.708 0 0));
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  --accent-1: #b9a7f0;
+  --accent-2: #7b5cd6;
+  --accent-3: #3e2a73;
+  --accent-text: #5b3fc0;
+  --accent-wash: #efeafc;
+}
+:root[data-ws="personal"] {
+  --accent-1: #f7c948;
+  --accent-2: #f08a3b;
+  --accent-3: #b4401f;
+  --accent-text: #a8461c;
+  --accent-wash: #fdf1df;
 }
 
-.dark {
-    --background: var(--color-swamp-950);
-    --foreground: var(--color-swamp-50);
-    --card: var(--color-swamp-900);
-    --card-foreground: var(--color-swamp-50);
-    --popover: var(--color-swamp-900);
-    --popover-foreground: var(--color-swamp-50);
-    --primary: var(--color-swamp-400);
-    --primary-foreground: var(--color-swamp-950);
-    --secondary: var(--color-swamp-800);
-    --secondary-foreground: var(--color-swamp-50);
-    --muted: var(--color-swamp-800);
-    --muted-foreground: var(--color-swamp-400);
-    --accent: var(--color-swamp-800);
-    --accent-foreground: var(--color-swamp-50);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: var(--color-swamp-800);
-    --input: var(--color-swamp-800);
-    --ring: var(--color-swamp-400);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: var(--color-swamp-900);
-    --sidebar-foreground: var(--color-swamp-50);
-    --sidebar-primary: var(--color-swamp-400);
-    --sidebar-primary-foreground: var(--color-swamp-950);
-    --sidebar-accent: var(--color-swamp-800);
-    --sidebar-accent-foreground: var(--color-swamp-50);
-    --sidebar-border: var(--color-swamp-800);
-    --sidebar-ring: var(--color-swamp-400);
+@theme inline {
+  --color-accent-1: var(--accent-1);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
+  --color-accent-text: var(--accent-text);
+  --color-accent-wash: var(--accent-wash);
+
+  /* shadcn primitives (Dialog, Popover, Calendar…) */
+  --color-background: var(--color-paper);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-paper);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-paper);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: var(--accent-2);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-wash);
+  --color-secondary-foreground: var(--color-ink);
+  --color-muted: var(--color-track);
+  --color-muted-foreground: #5d566b;
+  --color-accent: var(--accent-wash);
+  --color-accent-foreground: var(--color-ink);
+  --color-destructive: var(--color-rust);
+  --color-border: var(--color-line);
+  --color-input: var(--color-line-2);
+  --color-ring: var(--accent-2);
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
+    @apply border-line outline-ring/50;
+  }
   html {
-    @apply font-sans;
-    }
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    overflow-wrap: anywhere;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+  }
+}
+
+@utility route-gradient {
+  background: linear-gradient(135deg, var(--accent-1) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+}
+
+@utility card {
+  background: var(--color-paper);
+  border-radius: 24px;
+  box-shadow: 0 1px 0 #e6e2ee, 0 12px 32px -16px rgba(62, 42, 115, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

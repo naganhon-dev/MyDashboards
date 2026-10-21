@@ -82,6 +82,25 @@ export const isTaskCompletedOnDate = (task: Task, date: Date) => {
   return task.status === 'done';
 };
 
+// shortcut: a dated task stored at 00:00 means "no time" (a real midnight task shows as untimed); add a hasTime flag if that ever matters
+const NO_TIME = '00:00';
+
+/** 'HH:mm' the task is due on this date, or null when it has no time */
+export const taskTimeOn = (task: Task, date: Date): string | null => {
+  if (task.recurrence && task.recurrence.type !== 'none' && !task.dueDates?.length) return task.recurrence.time || null;
+  const due = task.dueDates?.length ? task.dueDates.find(ts => isSameDay(ts.toDate(), date))?.toDate() : task.dueDate?.toDate();
+  const time = due ? format(due, 'HH:mm') : null;
+  return time === NO_TIME ? null : time;
+};
+
+/** Quick add: "14:30 позвонить Пете" or "позвонить Пете 9.05" → title + time */
+export const parseQuickAdd = (text: string): { title: string; time: string | null } => {
+  const m = text.match(/(?:^|\s)([01]?\d|2[0-3])[:.]([0-5]\d)(?=\s|$)/);
+  if (!m) return { title: text.trim(), time: null };
+  const title = (text.slice(0, m.index) + text.slice(m.index! + m[0].length)).replace(/\s+/g, ' ').trim();
+  return title ? { title, time: `${m[1].padStart(2, '0')}:${m[2]}` } : { title: text.trim(), time: null };
+};
+
 // shortcut: repeating tasks look back only this far, so a long-forgotten daily routine doesn't flood the list
 export const MISSED_LOOKBACK_DAYS = 14;
 
