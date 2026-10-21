@@ -104,6 +104,6 @@ service cloud.firestore {
       allow delete: if isDocOwner();
     }
 
-    // user_links (Telegram → Google uid) and tg_link_tokens are written only by the server (api/), so clients get no access
+    // Everything else (old Telegram links, link codes) is closed to clients
   }
 }

@@ -22,7 +22,6 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
-  signInWithCustomToken,
   User
 } from 'firebase/auth';
 import { db, auth } from './lib/firebase';
@@ -82,38 +81,6 @@ import { ru } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
-
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: {
-        ready: () => void;
-        expand: () => void;
-        initData: string;
-        initDataUnsafe: {
-          user?: {
-            id: number;
-            first_name: string;
-            last_name?: string;
-            username?: string;
-          }
-        };
-        colorScheme: 'light' | 'dark';
-        onEvent: (eventType: string, eventHandler: () => void) => void;
-        MainButton: {
-          text: string;
-          show: () => void;
-          hide: () => void;
-          showProgress: (leaveActive: boolean) => void;
-          hideProgress: () => void;
-          disable: () => void;
-          enable: () => void;
-          onClick: (callback: () => void) => void;
-        };
-      };
-    };
-  }
-}
 
 interface Subtask {
   title: string;
@@ -240,19 +207,8 @@ function App() {
   
   const [isRecording, setIsRecording] = useState(false);
 
-  // Telegram states
-  const isTMA = typeof window !== 'undefined' && !!window.Telegram?.WebApp?.initData;
-  const [tgUser, setTgUser] = useState<{id: number, first_name: string} | null>(null);
-  const [tmaError, setTmaError] = useState<string | null>(null);
-  const [telegramLinkUrl, setTelegramLinkUrl] = useState<string | null>(null);
-  const [isLinkingLoading, setIsLinkingLoading] = useState(false);
-  const [isTmaResolved, setIsTmaResolved] = useState(!isTMA);
-
-  // --- Identity Logic ---
-
-  // In Telegram the server signs us in as the linked Google account, so the uid is the same everywhere
   const activeUid = user?.uid || null;
-  const isResolvingUser = !isAuthReady || !isTmaResolved;
+  const isResolvingUser = !isAuthReady;
 
   // Error Handler
   const handleFirestoreError = (error: any, operationType: string, path: string | null) => {
@@ -266,34 +222,6 @@ function App() {
   };
 
   const handleLogout = () => signOut(auth);
-
-  // Telegram Mini App: the server checks Telegram's signature and signs us in as the linked Google account
-  useEffect(() => {
-    if (!isTMA) return;
-    const tg = window.Telegram!.WebApp;
-    tg.ready();
-    tg.expand();
-    setIsDarkMode(tg.colorScheme === 'dark');
-    const tUser = tg.initDataUnsafe?.user;
-    if (tUser) setTgUser({ id: tUser.id, first_name: tUser.first_name });
-
-    (async () => {
-      try {
-        const res = await fetch('/api/tg/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: tg.initData }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        await signInWithCustomToken(auth, data.token);
-      } catch (error: any) {
-        setTmaError(error?.message || 'Не удалось войти через Telegram.');
-      } finally {
-        setIsTmaResolved(true);
-      }
-    })();
-  }, []);
 
   // Theme effect
   useEffect(() => {
@@ -430,25 +358,6 @@ function App() {
 
   // --- Linking Actions ---
 
-  // Asks the server for a one-time t.me link; opening it in the bot ties this Telegram to the Google account
-  const createTelegramLink = async () => {
-    if (!user) return;
-    setTelegramLinkUrl(null);
-    setIsLinkingLoading(true);
-    try {
-      const res = await fetch('/api/tg/link', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${await user.getIdToken()}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setTelegramLinkUrl(data.url);
-    } catch (error: any) {
-      alert(error?.message || "Не удалось создать ссылку. Проверьте соединение.");
-    } finally {
-      setIsLinkingLoading(false);
-    }
-  };
 
   // --- CRUD Actions ---
 
@@ -740,21 +649,6 @@ function App() {
     );
   }
 
-  // Telegram that isn't linked yet (or whose signature failed) can't reach any data
-  if (isTMA && (tmaError || !user)) return (
-    <div className="flex h-screen items-center justify-center bg-swamp-50 p-4">
-      <Card className="w-full max-w-sm border-none shadow-2xl">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Telegram не подключён</CardTitle>
-          <CardDescription>{tmaError}</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground text-center">
-          Откройте планер в браузере, войдите через Google и нажмите «Подключить Telegram». Потом откройте планер здесь заново.
-        </CardContent>
-      </Card>
-    </div>
-  );
-
   if (!user) return (
     <div className="flex h-screen items-center justify-center bg-swamp-50">
       <Card className="w-[400px] shadow-2xl border-none">
@@ -780,27 +674,7 @@ function App() {
     </div>
   );
 
-  const currentPhotoURL = isTMA ? null : user?.photoURL;
-
-  const telegramDialogContent = (
-    <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>Подключить Telegram</DialogTitle>
-        <DialogDescription>
-          Откройте ссылку и нажмите «Старт» в боте. Ссылка действует 15 минут.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="flex items-center justify-center py-6">
-        {isLinkingLoading || !telegramLinkUrl ? (
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-        ) : (
-          <a href={telegramLinkUrl} target="_blank" rel="noreferrer" className="inline-flex h-12 items-center gap-2 rounded-lg bg-primary px-6 text-lg font-medium text-primary-foreground">
-            <Send className="w-5 h-5" /> Открыть бота
-          </a>
-        )}
-      </div>
-    </DialogContent>
-  );
+  const currentPhotoURL = user?.photoURL;
 
   return (
     <div className="min-h-screen bg-swamp-50/50 dark:bg-swamp-950 flex flex-col font-sans transition-colors duration-300">
@@ -816,12 +690,6 @@ function App() {
             </div>
             
             <div className="flex items-center gap-2 sm:hidden">
-              {!isTMA && user && (
-                <Dialog>
-                  <DialogTrigger render={<Button variant="outline" size="sm" className="h-8 px-2" onClick={createTelegramLink} aria-label="Подключить Telegram"><Send className="w-4 h-4" /></Button>} />
-                  {telegramDialogContent}
-                </Dialog>
-              )}
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -833,16 +701,14 @@ function App() {
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full h-8 w-8">
                 {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-swamp-600" />}
               </Button>
-              {!isTMA && (
-                <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8" aria-label="Выйти">
-                  <LogOut className="w-4 h-4 text-red-500" />
-                </Button>
-              )}
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8" aria-label="Выйти">
+                <LogOut className="w-4 h-4 text-red-500" />
+              </Button>
               {currentPhotoURL ? (
                 <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
-                  <span className="text-[10px] font-bold text-primary">{tgUser?.first_name?.[0] || user?.displayName?.[0] || 'U'}</span>
+                  <span className="text-[10px] font-bold text-primary">{user?.displayName?.[0] || 'U'}</span>
                 </div>
               )}
             </div>
@@ -859,12 +725,6 @@ function App() {
           </div>
           
           <div className="hidden sm:flex items-center gap-2 sm:gap-3">
-            {!isTMA && user && (
-              <Dialog>
-                <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2 rounded-full" onClick={createTelegramLink}><Send className="w-4 h-4" /> Подключить Telegram</Button>} />
-                {telegramDialogContent}
-              </Dialog>
-            )}
             <Button 
               variant="outline" 
               size="sm" 
@@ -876,16 +736,14 @@ function App() {
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full">
               {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-swamp-600" />}
             </Button>
-            {!isTMA && (
-              <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full" aria-label="Выйти">
-                <LogOut className="w-5 h-5 text-muted-foreground" />
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full" aria-label="Выйти">
+              <LogOut className="w-5 h-5 text-muted-foreground" />
+            </Button>
             {currentPhotoURL ? (
               <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
-                <span className="text-[10px] font-bold text-primary">{tgUser?.first_name?.[0] || user?.displayName?.[0] || 'U'}</span>
+                <span className="text-[10px] font-bold text-primary">{user?.displayName?.[0] || 'U'}</span>
               </div>
             )}
           </div>
@@ -1176,7 +1034,7 @@ function App() {
                   </div>
                   <h3 className="text-lg font-semibold mb-2">Задач пока нет</h3>
                   <p className="text-sm text-muted-foreground max-w-[250px]">
-                    Создайте свою первую задачу или привяжите Telegram для синхронизации.
+                    Создайте свою первую задачу.
                   </p>
                 </Card>
               )}
