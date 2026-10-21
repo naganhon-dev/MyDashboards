@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { CalendarDays, Trash2, X } from 'lucide-react';
+import { CalendarDays, Copy, Trash2, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -64,9 +64,10 @@ type Props = {
   isEditing: boolean;
   onSubmit: () => void;
   onDelete?: () => void;
+  onDuplicate?: () => void;
 };
 
-export default function TaskDialog({ open, onOpenChange, form, setForm, isEditing, onSubmit, onDelete }: Props) {
+export default function TaskDialog({ open, onOpenChange, form, setForm, isEditing, onSubmit, onDelete, onDuplicate }: Props) {
   const set = (patch: Partial<TaskForm>) => setForm({ ...form, ...patch });
   const timeInput = (
     <Field label="Время">
@@ -214,7 +215,12 @@ export default function TaskDialog({ open, onOpenChange, form, setForm, isEditin
           <div className="flex items-center gap-2 pt-1">
             {isEditing && onDelete && (
               <button type="button" onClick={onDelete} className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-[15px] font-medium text-rust hover:bg-rust-wash">
-                <Trash2 className="size-4" /> Удалить
+                <Trash2 className="size-4" /> <span className="hidden sm:inline">Удалить</span>
+              </button>
+            )}
+            {isEditing && onDuplicate && (
+              <button type="button" onClick={onDuplicate} className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-[15px] font-medium text-ink-2 hover:bg-track">
+                <Copy className="size-4" /> <span className="hidden sm:inline">Дублировать</span>
               </button>
             )}
             <div className="flex-1" />

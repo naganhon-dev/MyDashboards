@@ -472,6 +472,8 @@ function App() {
         setForm={setTaskForm}
         isEditing={!!editingTaskId}
         onSubmit={saveTask}
+        // Same form becomes a new task; completed dates are not part of the form, so the copy starts clean
+        onDuplicate={() => setEditingTaskId(null)}
         onDelete={() => {
           const task = allTasks.find((t) => t.id === editingTaskId);
           closeTaskDialog();
