@@ -10,7 +10,7 @@ import {
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { addDays, addMonths, eachDayOfInterval, endOfWeek, format, isSameDay, isToday, startOfToday, startOfWeek } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { AlertCircle, BookOpen, CalendarDays, ChevronLeft, ChevronRight, LogOut, Plus, Search, StickyNote } from 'lucide-react';
+import { AlertCircle, BookOpen, CalendarDays, Flag, ChevronLeft, ChevronRight, LogOut, Plus, Search, StickyNote } from 'lucide-react';
 import { db, auth } from './lib/firebase';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,9 +21,10 @@ import MonthGrid from './components/MonthGrid';
 import TaskDialog, { emptyTaskForm, fieldClass } from './components/TaskDialog';
 import Inbox, { type Note } from './components/Inbox';
 import KnowledgeBase, { type Algorithm } from './components/KnowledgeBase';
+import Sprint from './components/Sprint';
 
 type Workspace = 'work' | 'personal';
-type View = 'plan' | 'inbox' | 'kb';
+type View = 'plan' | 'sprint' | 'inbox' | 'kb';
 type Owned<T> = T & { userId: string; createdAt: Timestamp; workspace?: Workspace };
 
 // --- Error Boundary ---
@@ -257,7 +258,11 @@ function App() {
 
   const toggleTask = (task: Task, date: Date) => {
     const repeating = !!(task.recurrence && task.recurrence.type !== 'none') || !!task.dueDates?.length;
-    if (!repeating) return tryWrite(() => updateDoc(doc(db, 'tasks', task.id), { status: task.status === 'done' ? 'todo' : 'done' }));
+    // completedAt feeds the sprint report ("what got done in these two weeks")
+    if (!repeating) {
+      const done = task.status !== 'done';
+      return tryWrite(() => updateDoc(doc(db, 'tasks', task.id), { status: done ? 'done' : 'todo', completedAt: done ? serverTimestamp() : null }));
+    }
     const key = format(date, 'yyyy-MM-dd');
     const list = task.completedDates || [];
     return tryWrite(() => updateDoc(doc(db, 'tasks', task.id), { completedDates: list.includes(key) ? list.filter((d) => d !== key) : [...list, key] }));
@@ -297,6 +302,7 @@ function App() {
   const initials = (user.displayName || user.email || '?').split(/[\s@.]/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
   const nav: [View, string, typeof CalendarDays, number?][] = [
     ['plan', 'План', CalendarDays, missed.length || undefined],
+    ['sprint', 'Спринт', Flag],
     ['inbox', 'Заметки', StickyNote, notes.length || undefined],
     ['kb', 'База знаний', BookOpen],
   ];
@@ -454,12 +460,13 @@ function App() {
           </>
         )}
 
+        {view === 'sprint' && <Sprint tasks={tasks} onOpen={openTask} onCopied={() => setToast({ text: 'Черновик скопирован' })} />}
         {view === 'inbox' && <Inbox notes={notes} onAdd={addNote} onToTask={noteToTask} onDelete={(n) => removeWithUndo('notes', n, 'Заметка')} />}
         {view === 'kb' && <KnowledgeBase items={algorithms} onSave={saveAlgorithm} onDelete={(a) => removeWithUndo('algorithms', a, 'Запись')} />}
       </main>
 
       {/* Mobile bottom nav */}
-      <nav aria-label="Разделы" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <nav aria-label="Разделы" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
         {nav.map(([v, label, Icon, badge]) => (
           <button key={v} onClick={() => setView(v)} aria-current={view === v ? 'page' : undefined} className={cn('relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium', view === v ? 'text-accent-text' : 'text-faint')}>
             <Icon className="size-[22px]" />

@@ -23,6 +23,7 @@ export interface Task {
     time?: string; // 'HH:mm'
   } | null;
   completedDates?: string[];
+  completedAt?: Timestamp | null; // one-off tasks only; missing on tasks finished before 2026-10-21
   tags?: string[];
   subtasks?: Subtask[];
   workspace?: 'work' | 'personal';
