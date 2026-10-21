@@ -15,7 +15,7 @@ function List({ title, tone, items, empty, onOpen }: { title: string; tone: 'don
   return (
     <section className="card flex min-w-0 flex-col p-5">
       <h2 className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-faint">
-        {title} <span className="rounded-full bg-track px-2 py-0.5 text-[11px] text-ink-2">{items.length}</span>
+        {title} <span className="rounded-full bg-track px-2 py-0.5 text-xs text-ink-2">{items.length}</span>
       </h2>
       {items.length === 0 ? (
         <p className="mt-3 text-[14px] text-faint">{empty}</p>

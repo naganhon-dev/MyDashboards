@@ -4,8 +4,8 @@
   "description": "Задачи, рутины и заметки, чтобы ничего не забыть",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f2f8",
-  "theme_color": "#f4f2f8",
+  "background_color": "#e6e2ee",
+  "theme_color": "#e6e2ee",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]

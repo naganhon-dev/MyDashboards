@@ -361,11 +361,11 @@ function App() {
             key={v}
             onClick={() => setView(v)}
             aria-current={view === v ? 'page' : undefined}
-            className={cn('flex min-h-11 items-center gap-3 rounded-xl px-3 text-[15px]', view === v ? 'bg-paper font-semibold text-ink shadow-sm' : 'text-ink-2 hover:bg-paper/60')}
+            className={cn('flex min-h-11 items-center gap-3 rounded-xl px-3 text-[15px]', view === v ? 'bg-paper font-semibold text-ink shadow-sm' : 'text-ink-2 hover:bg-paper/70')}
           >
             <Icon className={cn('size-[18px]', view === v ? 'text-accent-text' : 'text-faint')} />
             {label}
-            {badge && <span className={cn('ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold', v === 'plan' ? 'bg-rust-wash text-rust-text' : 'bg-track text-faint')}>{badge}</span>}
+            {badge && <span className={cn('ml-auto rounded-full px-2 py-0.5 text-xs font-semibold', v === 'plan' ? 'bg-rust-wash text-rust-text' : 'bg-track text-faint')}>{badge}</span>}
           </button>
         ))}
         <div className="flex-1" />
@@ -420,7 +420,7 @@ function App() {
                       aria-pressed={selected}
                       className={cn('flex flex-col items-center gap-1 rounded-2xl py-2', selected ? 'route-gradient text-white shadow-md' : 'hover:bg-paper')}
                     >
-                      <span className={cn('text-[11px] font-medium uppercase', selected ? 'text-white/85' : isToday(d) ? 'text-accent-text' : 'text-faint')}>{format(d, 'EEEEEE', { locale: ru })}</span>
+                      <span className={cn('text-xs font-medium uppercase', selected ? 'text-white/85' : isToday(d) ? 'text-accent-text' : 'text-faint')}>{format(d, 'EEEEEE', { locale: ru })}</span>
                       <span className="font-display text-[15px] font-semibold">{format(d, 'd')}</span>
                       <span className={cn('size-1.5 rounded-full', hadMiss ? (selected ? 'bg-white' : 'bg-rust') : 'bg-transparent')} />
                     </button>
@@ -442,7 +442,7 @@ function App() {
                       <button
                         onClick={() => toggleTask(task, dates[0])}
                         aria-label={`Отметить «${task.title}» за ${format(dates[0], 'd MMMM', { locale: ru })}`}
-                        className="size-[18px] shrink-0 rounded-md border-[1.5px] border-rust/50 hover:border-rust hover:bg-rust-wash"
+                        className="size-[18px] shrink-0 rounded-md border-[1.5px] border-rust hover:bg-rust-wash"
                       />
                       <button onClick={() => openTask(task)} className="min-w-0 flex-1 truncate text-left text-[14px] font-medium">{task.title}</button>
                       <button onClick={() => setSelectedDate(dates[0])} className="shrink-0 text-[12px] text-rust-text hover:underline">
@@ -468,7 +468,7 @@ function App() {
       {/* Mobile bottom nav */}
       <nav aria-label="Разделы" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
         {nav.map(([v, label, Icon, badge]) => (
-          <button key={v} onClick={() => setView(v)} aria-current={view === v ? 'page' : undefined} className={cn('relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium', view === v ? 'text-accent-text' : 'text-faint')}>
+          <button key={v} onClick={() => setView(v)} aria-current={view === v ? 'page' : undefined} className={cn('relative flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-medium', view === v ? 'text-accent-text' : 'text-faint')}>
             <Icon className="size-[22px]" />
             {label}
             {badge && v === 'plan' && <span className="absolute right-[calc(50%-22px)] top-2.5 size-2 rounded-full bg-rust" />}
@@ -557,7 +557,7 @@ function GlobalSearch({ tasks, notes, algorithms, onTask, onView }: { tasks: Tas
           {results.map((r) => (
             <li key={r.key}>
               <button onClick={() => { r.go(); setQ(''); }} className="block min-h-11 w-full px-3.5 py-2 text-left hover:bg-track">
-                <span className="block text-[11px] font-medium uppercase tracking-wide text-faint">{r.kind}</span>
+                <span className="block text-xs font-medium uppercase tracking-wide text-faint">{r.kind}</span>
                 <span className="block truncate text-[14px]">{r.text}</span>
               </button>
             </li>

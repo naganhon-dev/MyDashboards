@@ -21,7 +21,7 @@ export default function MonthGrid({ month, tasks, onPickDay, onOpen }: Props) {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-line bg-paper">
       <div className="grid grid-cols-7 border-b border-line">
         {WEEKDAYS.map((d) => (
-          <div key={d} className="py-2.5 text-center text-[11px] font-medium uppercase tracking-wide text-faint">{d}</div>
+          <div key={d} className="py-2.5 text-center text-xs font-medium uppercase tracking-wide text-faint">{d}</div>
         ))}
       </div>
       <div className="grid flex-1 auto-rows-fr grid-cols-7 overflow-y-auto">
@@ -41,7 +41,7 @@ export default function MonthGrid({ month, tasks, onPickDay, onOpen }: Props) {
               onClick={() => onPickDay(day)}
               onKeyDown={(e) => e.key === 'Enter' && onPickDay(day)}
               aria-label={`${format(day, 'd MMMM', { locale: ru })}: задач ${items.length}`}
-              className={cn('flex min-h-20 min-w-0 cursor-pointer flex-col gap-1 border-b border-l border-line/70 p-1.5 transition hover:bg-track/60 [&:nth-child(7n+1)]:border-l-0', !inMonth && 'bg-ground/50')}
+              className={cn('flex min-h-20 min-w-0 cursor-pointer flex-col gap-1 border-b border-l border-line p-1.5 transition hover:bg-track/60 [&:nth-child(7n+1)]:border-l-0', !inMonth && 'bg-ground/50')}
             >
               <div className="flex items-center gap-1">
                 <span className={cn('grid size-7 place-items-center rounded-full font-display text-[13px] font-semibold', isToday(day) ? 'route-gradient text-white' : inMonth ? 'text-ink' : 'text-faint')}>
@@ -66,7 +66,7 @@ export default function MonthGrid({ month, tasks, onPickDay, onOpen }: Props) {
                     <span className="truncate">{task.title}</span>
                   </button>
                 ))}
-                {items.length > MAX_CHIPS && <span className="px-1.5 text-[11px] font-medium text-accent-text">ещё {items.length - MAX_CHIPS}</span>}
+                {items.length > MAX_CHIPS && <span className="px-1.5 text-xs font-medium text-accent-text">ещё {items.length - MAX_CHIPS}</span>}
               </div>
             </div>
           );
