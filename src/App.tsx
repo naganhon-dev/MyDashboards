@@ -12,10 +12,8 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc, 
-  doc, 
-  getDoc,
-  setDoc,
-  serverTimestamp, 
+  doc,
+  serverTimestamp,
   orderBy,
   Timestamp
 } from 'firebase/firestore';
@@ -24,10 +22,8 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
-  signInAnonymously,
   User
 } from 'firebase/auth';
-import { GoogleGenAI } from "@google/genai";
 import { db, auth } from './lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,7 +51,6 @@ import {
   MicOff,
   MessageSquare,
   Send,
-  History,
   AlertCircle,
   Moon,
   Sun,
@@ -72,10 +67,8 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Search,
   StickyNote,
-  Lightbulb,
   X,
   Tag as TagIcon,
   BrainCircuit,
@@ -85,52 +78,9 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { format, addDays, startOfToday, isSameDay, eachDayOfInterval, isToday, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
-
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: {
-        ready: () => void;
-        expand: () => void;
-        initData: string;
-        initDataUnsafe: {
-          user?: {
-            id: number;
-            first_name: string;
-            last_name?: string;
-            username?: string;
-          }
-        };
-        colorScheme: 'light' | 'dark';
-        onEvent: (eventType: string, eventHandler: () => void) => void;
-        MainButton: {
-          text: string;
-          show: () => void;
-          hide: () => void;
-          showProgress: (leaveActive: boolean) => void;
-          hideProgress: () => void;
-          disable: () => void;
-          enable: () => void;
-          onClick: (callback: () => void) => void;
-        };
-      };
-    };
-  }
-}
-
-interface UserLink {
-  linked_uid: string;
-}
-
-interface LinkCode {
-  code: string;
-  google_uid: string;
-  expiresAt: Timestamp;
-}
 
 interface Subtask {
   title: string;
@@ -174,23 +124,6 @@ interface Note {
   createdAt: Timestamp;
   workspace?: 'work' | 'personal';
 }
-
-// --- AI Setup ---
-let genAI: GoogleGenAI | null = null;
-const getGenAI = () => {
-  if (!genAI) {
-    // Check both standard and VITE-prefixed env vars for maximum compatibility
-    // @ts-ignore - Vite handles this at build time
-    const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      console.warn("GEMINI_API_KEY or VITE_GEMINI_API_KEY is not defined. AI features will be disabled.");
-      return null;
-    }
-    genAI = new GoogleGenAI({ apiKey });
-  }
-  return genAI;
-};
 
 // --- Error Boundary ---
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
@@ -263,8 +196,6 @@ function App() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [dailyBriefing, setDailyBriefing] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -274,49 +205,10 @@ function App() {
     return false;
   });
   
-  // Memory Chat states
-  const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<{role: 'user' | 'ai', content: string}[]>([]);
-  const [isChatLoading, setIsChatLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  
-  // Linking states
-  const [linkedUid, setLinkedUid] = useState<string | null>(null);
-  const [isTMA, setIsTMA] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return !!(window.Telegram?.WebApp?.initData);
-  });
-  const [tgUser, setTgUser] = useState<{id: number, first_name: string} | null>(null);
-  const [showLinkingScreen, setShowLinkingScreen] = useState(false);
-  const [codeInput, setCodeInput] = useState('');
-  const [generatedLinkCode, setGeneratedLinkCode] = useState<string | null>(null);
-  const [isLinkingLoading, setIsLinkingLoading] = useState(false);
 
-  const [isTmaResolved, setIsTmaResolved] = useState(false);
-  
-  // --- Identity Logic ---
-
-  // activeUid is the source of truth for all data operations
-  const activeUid = useMemo(() => {
-    if (isTMA) {
-      if (linkedUid) {
-        console.log("Using Linked Google UID for data:", linkedUid);
-        return linkedUid;
-      }
-      return null; // Don't fallback to TG ID for tasks
-    }
-    return user?.uid || null;
-  }, [isTMA, linkedUid, user]);
-
-  const isResolvingUser = useMemo(() => {
-    if (!isAuthReady) return true;
-    if (isTMA) {
-      // In TMA, we must finish checking for a link (isTmaResolved)
-      return !isTmaResolved;
-    }
-    // In Browser, we are resolved once isAuthReady is true
-    return false;
-  }, [isAuthReady, isTMA, isTmaResolved]);
+  const activeUid = user?.uid || null;
+  const isResolvingUser = !isAuthReady;
 
   // Error Handler
   const handleFirestoreError = (error: any, operationType: string, path: string | null) => {
@@ -324,138 +216,12 @@ function App() {
       error: error?.message || String(error),
       operationType,
       path,
-      authInfo: {
-        userId: auth.currentUser?.uid,
-        isTMA,
-        linkedUid
-      }
+      userId: auth.currentUser?.uid,
     };
     console.error('Firestore Error:', JSON.stringify(errInfo));
   };
 
-  const handleLogout = async () => {
-    if (isTMA) {
-      console.log("Logging out from TMA (clearing link)...");
-      setLinkedUid(null);
-      setShowLinkingScreen(true);
-      // Optional: hide anon link in DB
-      if (auth.currentUser) {
-        try {
-          await deleteDoc(doc(db, 'user_links_anon', auth.currentUser.uid)).catch(() => {});
-        } catch(e) {}
-      }
-    } else {
-      await signOut(auth);
-    }
-  };
-
-  // Telegram Mini App Initialization
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      
-      const initTMA = async () => {
-        setIsTMA(true);
-        console.log("TMA Initializing...");
-        
-        // Sync theme with Telegram
-        if (tg.colorScheme === 'dark') {
-          setIsDarkMode(true);
-        } else if (tg.colorScheme === 'light') {
-          setIsDarkMode(false);
-        }
-        
-        if (tg.initDataUnsafe?.user) {
-          const tUser = tg.initDataUnsafe.user;
-          console.log("Found TG user:", tUser.id);
-          setTgUser({ id: tUser.id, first_name: tUser.first_name });
-          
-          // Check for link
-          try {
-            console.log(`[TMA Init] Using Firestore Project: ${db.app.options.projectId}`);
-            const linkDoc = await getDoc(doc(db, 'user_links', tUser.id.toString()));
-            if (linkDoc.exists()) {
-              const data = linkDoc.data();
-              const fUserId = data.userId || data.linked_uid; // check both for compatibility
-              console.log("Found existing link to userId:", fUserId);
-              setLinkedUid(fUserId);
-              setShowLinkingScreen(false);
-            } else {
-              console.log("No link found, showing linking screen");
-              setShowLinkingScreen(true);
-            }
-          } catch (error) {
-            console.error("Error checking user link:", error);
-            setShowLinkingScreen(true);
-          }
-        } else {
-          console.warn("No TG user info in initDataUnsafe");
-          setShowLinkingScreen(true);
-        }
-        setIsTmaResolved(true);
-      };
-      initTMA();
-    } else {
-      setIsTMA(false);
-    }
-  }, []);
-
-  // Sync linkedUid for Browser (Google Auth)
-  useEffect(() => {
-    if (isAuthReady) {
-      if (!isTMA) {
-        setLinkedUid(user?.uid || null);
-      }
-    }
-  }, [user, isTMA, isAuthReady]);
-
-  // Sync Anonymous Auth and Link Mapping for TMA
-  useEffect(() => {
-    const syncAnonLink = async () => {
-      if (isTMA && isAuthReady) {
-        let currentUser = auth.currentUser;
-        if (!currentUser) {
-          console.log("Signing in anonymously for TMA security rules...");
-          try {
-            const cred = await signInAnonymously(auth);
-            currentUser = cred.user;
-          } catch (err) {
-            console.error("Anon auth failed:", err);
-            return;
-          }
-        }
-        
-        if (currentUser?.isAnonymous && linkedUid && tgUser) {
-          console.log("Syncing anon session with linked UID for rules...");
-          await setDoc(doc(db, 'user_links_anon', currentUser.uid), {
-            userId: linkedUid, // Primary identifier
-            linked_uid: linkedUid, // Legacy fallback for rules
-            telegramId: tgUser.id.toString(),
-            updatedAt: serverTimestamp()
-          });
-        }
-      }
-    };
-    syncAnonLink();
-  }, [isTMA, isAuthReady, linkedUid, tgUser]);
-
-  // TMA MainButton Loading Indicator
-  useEffect(() => {
-    const tg = window.Telegram?.WebApp;
-    if (tg?.MainButton) {
-      if (!isAuthReady || isAiLoading || isChatLoading || isLinkingLoading) {
-        tg.MainButton.text = "Загрузка данных...";
-        tg.MainButton.show();
-        tg.MainButton.showProgress(false);
-        tg.MainButton.disable();
-      } else {
-        tg.MainButton.hide();
-        tg.MainButton.hideProgress();
-      }
-    }
-  }, [isAuthReady, isAiLoading, isChatLoading, isLinkingLoading]);
+  const handleLogout = () => signOut(auth);
 
   // Theme effect
   useEffect(() => {
@@ -537,9 +303,6 @@ function App() {
   useEffect(() => {
     // Determine which UID to use for data fetching
     const currentUid = activeUid;
-    
-    console.log(`[Data Context] isTMA: ${isTMA}, user: ${user?.uid}, activeUid: ${activeUid}`);
-    console.log(`Используемый ID для загрузки данных: ${currentUid}`);
 
     if (isResolvingUser) return;
 
@@ -563,104 +326,7 @@ function App() {
     }, (err) => handleFirestoreError(err, 'LIST', 'notes'));
 
     return () => { unsubTasks(); unsubAlgos(); unsubNotes(); };
-  }, [activeUid, isResolvingUser, isTMA]);
-
-  // --- AI Actions ---
-
-  const generateSubtasks = async () => {
-    if (!taskForm.title.trim()) return;
-    const ai = getGenAI();
-    if (!ai) {
-      alert("AI функции недоступны. Проверьте API ключ.");
-      return;
-    }
-    setIsAiLoading(true);
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `Разбей задачу "${taskForm.title}" на 3-5 конкретных подзадач. Верни только список подзадач через запятую, без лишних слов.`,
-      });
-      const text = response.text;
-      const suggested = text.split(',').map(s => ({ title: s.trim(), done: false }));
-      setTaskForm(prev => ({ ...prev, subtasks: [...prev.subtasks, ...suggested] }));
-    } catch (error: any) {
-      console.error(error);
-      alert(`Ошибка AI: ${error.message}`);
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  const getDailyBriefing = async () => {
-    if (!activeUid || tasks.length === 0) return;
-    const ai = getGenAI();
-    if (!ai) return;
-    setIsAiLoading(true);
-    try {
-      const todayTasks = tasks.filter(t => t.dueDate && isSameDay(t.dueDate.toDate(), startOfToday()));
-      const taskList = todayTasks.map(t => `- ${t.title} (${t.priority})`).join('\n');
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `Ты - персональный ассистент. Вот список задач на сегодня:\n${taskList}\nДай краткое, мотивирующее напутствие на день (2-3 предложения).`,
-      });
-      setDailyBriefing(response.text);
-    } catch (error: any) {
-      console.error(error);
-      setDailyBriefing(`Ошибка загрузки: ${error.message}`);
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  const askMemory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || !activeUid || isChatLoading) return;
-
-    const ai = getGenAI();
-    if (!ai) {
-      setChatMessages(prev => [...prev, { 
-        role: 'ai', 
-        content: "AI функции недоступны. Пожалуйста, добавьте переменную VITE_GEMINI_API_KEY в настройках Vercel и сделайте Redeploy." 
-      }]);
-      return;
-    }
-
-    const userMsg = chatInput;
-    setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-    setIsChatLoading(true);
-
-    try {
-      const context = {
-        tasks: tasks.map(t => ({ title: t.title, desc: t.description, status: t.status })),
-        algorithms: algorithms.map(a => ({ title: a.title, content: a.content })),
-        notes: notes.map(n => n.content)
-      };
-
-      const prompt = `Ты - "Вторая память" пользователя. Твоя задача - отвечать на вопросы, используя ТОЛЬКО данные пользователя ниже. Если информации нет, так и скажи.
-      
-ДАННЫЕ ПОЛЬЗОВАТЕЛЯ:
-Задачи: ${JSON.stringify(context.tasks)}
-Алгоритмы: ${JSON.stringify(context.algorithms)}
-Заметки: ${JSON.stringify(context.notes)}
-
-ВОПРОС ПОЛЬЗОВАТЕЛЯ: ${userMsg}
-
-Отвечай кратко и по делу на русском языке.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
-
-      setChatMessages(prev => [...prev, { role: 'ai', content: response.text }]);
-    } catch (error: any) {
-      console.error(error);
-      setChatMessages(prev => [...prev, { role: 'ai', content: `Ошибка API: ${error.message || 'Неизвестная ошибка'}. Убедитесь, что ключ правильный и у него есть доступ к моделям.` }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  };
+  }, [activeUid, isResolvingUser]);
 
   const startVoiceInput = () => {
     if (!('webkitSpeechRecognition' in window)) {
@@ -692,76 +358,6 @@ function App() {
 
   // --- Linking Actions ---
 
-  const generateLinkCode = async () => {
-    if (!user) return;
-    setGeneratedLinkCode(null);
-    setIsLinkingLoading(true);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log("Attempting to generate link code:", code);
-    try {
-      await setDoc(doc(db, 'link_codes', code), {
-        code,
-        google_uid: user.uid,
-        expiresAt: Timestamp.fromDate(new Date(Date.now() + 3600000)), // 60 mins
-        createdAt: serverTimestamp()
-      });
-      setGeneratedLinkCode(code);
-      console.log("Successfully generated link code:", code);
-    } catch (error) {
-      console.error("Firebase Link Error:", error);
-      alert("Ошибка при генерации кода. Проверьте соединение.");
-    } finally {
-      setIsLinkingLoading(false);
-    }
-  };
-
-  const verifyLinkCode = async () => {
-    if (!tgUser || !codeInput.trim()) return;
-    setIsLinkingLoading(true);
-    const enteredCode = codeInput.trim();
-    try {
-      console.log(`[Verify Link] Using Firestore Project: ${db.app.options.projectId}`);
-      const codeDoc = await getDoc(doc(db, 'link_codes', enteredCode));
-      if (codeDoc.exists()) {
-        const data = codeDoc.data();
-        const nowMs = Date.now();
-        const expiresAtMs = data.expiresAt.toMillis();
-        
-        if (expiresAtMs > nowMs) {
-          // Valid code - create link using 'userId' field precisely as requested
-          const tgId = tgUser.id.toString();
-          await setDoc(doc(db, 'user_links', tgId), {
-            userId: data.google_uid,
-            linkedAt: serverTimestamp()
-          });
-          
-          // Also set the anon link for rules
-          if (auth.currentUser?.isAnonymous) {
-            await setDoc(doc(db, 'user_links_anon', auth.currentUser.uid), {
-              userId: data.google_uid, // Consistency check: use userId here too
-              linked_uid: data.google_uid, // keeping legacy for rules if needed, but updating rules next
-              telegramId: tgId,
-              updatedAt: serverTimestamp()
-            });
-          }
-
-          setLinkedUid(data.google_uid);
-          setShowLinkingScreen(false);
-          // Delete code after use
-          await deleteDoc(doc(db, 'link_codes', enteredCode));
-        } else {
-          alert("Код истек. Сгенерируйте новый.");
-        }
-      } else {
-        alert("Неверный код.");
-      }
-    } catch (error) {
-      console.error("Error verifying link code:", error);
-      alert("Ошибка при проверке кода.");
-    } finally {
-      setIsLinkingLoading(false);
-    }
-  };
 
   // --- CRUD Actions ---
 
@@ -1053,8 +649,7 @@ function App() {
     );
   }
 
-  // Show login only if NOT in TMA and no Google user
-  if (!user && !isTMA) return (
+  if (!user) return (
     <div className="flex h-screen items-center justify-center bg-swamp-50">
       <Card className="w-[400px] shadow-2xl border-none">
         <CardHeader className="text-center">
@@ -1079,11 +674,7 @@ function App() {
     </div>
   );
 
-  // If in TMA but not linked yet, show nothing or just the linking screen 
-  // (the linking screen is currently rendered inside the main return, 
-  // but if we don't have a user we might want to wrap the main content)
-  
-  const currentPhotoURL = isTMA ? null : user?.photoURL;
+  const currentPhotoURL = user?.photoURL;
 
   return (
     <div className="min-h-screen bg-swamp-50/50 dark:bg-swamp-950 flex flex-col font-sans transition-colors duration-300">
@@ -1099,28 +690,6 @@ function App() {
             </div>
             
             <div className="flex items-center gap-2 sm:hidden">
-              {!isTMA && user && (
-                <Dialog>
-                  <DialogTrigger render={<Button variant="outline" size="sm" className="h-8 px-2" onClick={generateLinkCode}><Send className="w-4 h-4" /></Button>} />
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Связать с Telegram</DialogTitle>
-                      <DialogDescription>
-                        Введите этот код в Telegram Mini App, чтобы синхронизировать данные.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="flex items-center justify-center py-6">
-                      {isLinkingLoading ? (
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-                      ) : (
-                        <div className="text-4xl font-bold tracking-[0.5em] text-primary bg-primary/10 px-6 py-3 rounded-lg">
-                          {generatedLinkCode || "..."}
-                        </div>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -1132,14 +701,14 @@ function App() {
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full h-8 w-8">
                 {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-swamp-600" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8">
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8" aria-label="Выйти">
                 <LogOut className="w-4 h-4 text-red-500" />
               </Button>
               {currentPhotoURL ? (
                 <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
-                  <span className="text-[10px] font-bold text-primary">{tgUser?.first_name?.[0] || user?.displayName?.[0] || 'U'}</span>
+                  <span className="text-[10px] font-bold text-primary">{user?.displayName?.[0] || 'U'}</span>
                 </div>
               )}
             </div>
@@ -1156,28 +725,6 @@ function App() {
           </div>
           
           <div className="hidden sm:flex items-center gap-2 sm:gap-3">
-            {!isTMA && user && (
-              <Dialog>
-                <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2 rounded-full" onClick={generateLinkCode}><Send className="w-4 h-4" /> Link Telegram</Button>} />
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Связать с Telegram</DialogTitle>
-                    <DialogDescription>
-                      Введите этот код в Telegram Mini App, чтобы синхронизировать данные.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="flex items-center justify-center py-10">
-                    {isLinkingLoading ? (
-                      <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary" />
-                    ) : (
-                      <div className="text-5xl font-bold tracking-widest text-primary bg-primary/5 px-8 py-4 rounded-2xl border-2 border-primary/10">
-                        {generatedLinkCode || "..."}
-                      </div>
-                    )}
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
             <Button 
               variant="outline" 
               size="sm" 
@@ -1189,14 +736,14 @@ function App() {
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full">
               {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-swamp-600" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full">
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full" aria-label="Выйти">
               <LogOut className="w-5 h-5 text-muted-foreground" />
             </Button>
             {currentPhotoURL ? (
               <img src={currentPhotoURL} className="w-8 h-8 rounded-full border shadow-sm" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
-                <span className="text-[10px] font-bold text-primary">{tgUser?.first_name?.[0] || user?.displayName?.[0] || 'U'}</span>
+                <span className="text-[10px] font-bold text-primary">{user?.displayName?.[0] || 'U'}</span>
               </div>
             )}
           </div>
@@ -1204,72 +751,8 @@ function App() {
       </header>
 
       <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
-        <AnimatePresence>
-          {showLinkingScreen && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
-            >
-              <Card className="w-full max-w-sm border-2 border-primary/20 shadow-2xl">
-                <CardHeader className="text-center">
-                  <CardTitle className="text-2xl">Вход в систему</CardTitle>
-                  <CardDescription>
-                    Похоже, ваш Telegram аккаунт еще не привязан.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      Откройте приложение в браузере, нажмите <strong>"Link Telegram"</strong> и введите код ниже:
-                    </p>
-                    <Input 
-                      placeholder="XXXXXX" 
-                      className="text-center text-2xl tracking-[0.3em] font-bold h-14"
-                      maxLength={6}
-                      value={codeInput}
-                      onChange={(e) => setCodeInput(e.target.value)}
-                    />
-                  </div>
-                  <Button 
-                    className="w-full h-12 text-lg" 
-                    onClick={verifyLinkCode}
-                    disabled={isLinkingLoading || codeInput.length < 6}
-                  >
-                    {isLinkingLoading ? "Проверка..." : "Подключиться"}
-                  </Button>
-                </CardContent>
-                <CardFooter className="justify-center border-t pt-4">
-                  <p className="text-xs text-muted-foreground">
-                    Ваши данные в безопасности и зашифрованы.
-                  </p>
-                </CardFooter>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Sidebar / Briefing */}
+        {/* Sidebar */}
         <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1">
-          <Card className="border-none shadow-sm bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold flex items-center gap-2 dark:text-white">
-                <Sparkles className="w-4 h-4 text-primary" />
-                Брифинг дня
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {dailyBriefing ? (
-                <p className="text-sm text-swamp-700 dark:text-swamp-300 italic leading-relaxed">"{dailyBriefing}"</p>
-              ) : (
-                <Button variant="outline" size="sm" className="w-full gap-2 dark:border-swamp-700 dark:text-swamp-300" onClick={getDailyBriefing} disabled={isAiLoading}>
-                  {isAiLoading ? "Думаю..." : "Получить напутствие"}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-
           <Card className="border-none shadow-sm dark:bg-swamp-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2 dark:text-white">
@@ -1321,9 +804,7 @@ function App() {
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6">
               <TabsList className="bg-swamp-200/50 dark:bg-swamp-800/50 p-1 flex flex-wrap h-auto">
                 <TabsTrigger value="tasks" className="gap-2 flex-1 sm:flex-none py-2"><CheckCircle2 className="w-4 h-4" /> <span className="hidden sm:inline">Задачи</span></TabsTrigger>
-                <TabsTrigger value="algorithms" className="gap-2 flex-1 sm:flex-none py-2"><BookOpen className="w-4 h-4" /> <span className="hidden sm:inline">База знаний</span></TabsTrigger>
-                <TabsTrigger value="memory" className="gap-2 flex-1 sm:flex-none py-2"><History className="w-4 h-4" /> <span className="hidden sm:inline">Спросить память</span></TabsTrigger>
-              </TabsList>
+                <TabsTrigger value="algorithms" className="gap-2 flex-1 sm:flex-none py-2"><BookOpen className="w-4 h-4" /> <span className="hidden sm:inline">База знаний</span></TabsTrigger>              </TabsList>
 
               {activeTab === 'tasks' && (
                 <Dialog open={isTaskModalOpen} onOpenChange={(open) => {
@@ -1528,12 +1009,7 @@ function App() {
                         </div>
 
                         <div className="grid gap-2">
-                          <div className="flex justify-between items-center">
-                            <Label className="dark:text-swamp-300">Подзадачи</Label>
-                            <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-primary" onClick={generateSubtasks} disabled={isAiLoading}>
-                              <Sparkles className="w-3 h-3 shrink-0" /> {isAiLoading ? "Генерация..." : "AI Подзадачи"}
-                            </Button>
-                          </div>
+                          <Label className="dark:text-swamp-300">Подзадачи</Label>
                           <div className="space-y-2 max-h-[120px] overflow-y-auto p-2 border rounded-md bg-swamp-50 dark:bg-swamp-800 dark:border-swamp-700">
                             {taskForm.subtasks.map((st, i) => (
                               <div key={i} className="flex items-center gap-2 text-sm dark:text-swamp-300">
@@ -1551,14 +1027,14 @@ function App() {
             </div>
 
             <TabsContent value="tasks" className="space-y-6 outline-none">
-              {tasks.length === 0 && !isAiLoading && (
+              {tasks.length === 0 && (
                 <Card className="border-dashed border-2 py-12 flex flex-col items-center justify-center text-center bg-transparent">
                   <div className="bg-primary/10 p-4 rounded-full mb-4">
                     <CheckCircle2 className="w-8 h-8 text-primary" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2">Задач пока нет</h3>
                   <p className="text-sm text-muted-foreground max-w-[250px]">
-                    Создайте свою первую задачу или привяжите Telegram для синхронизации.
+                    Создайте свою первую задачу.
                   </p>
                 </Card>
               )}
@@ -1753,71 +1229,6 @@ function App() {
                   </Card>
                 ))}
               </div>
-            </TabsContent>
-
-            <TabsContent value="memory" className="outline-none">
-              <Card className="border-none shadow-sm dark:bg-swamp-900 h-[calc(100vh-250px)] lg:h-[600px] flex flex-col">
-                <CardHeader className="border-b dark:border-swamp-800">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <BrainCircuit className="w-5 h-5 text-primary" />
-                    Ваша цифровая память
-                  </CardTitle>
-                  <CardDescription>Задайте любой вопрос по вашим задачам, заметкам и алгоритмам</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
-                  <ScrollArea className="flex-1 p-4">
-                    <div className="space-y-4">
-                      {chatMessages.length === 0 && (
-                        <div className="text-center py-10 space-y-4">
-                          <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-                            <Lightbulb className="w-8 h-8 text-primary" />
-                          </div>
-                          <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                            "Когда я планировал встречу с клиентом?" или "Как мне настроить сервер по моему алгоритму?"
-                          </p>
-                        </div>
-                      )}
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} className={cn("flex", msg.role === 'user' ? "justify-end" : "justify-start")}>
-                          <div className={cn(
-                            "max-w-[80%] p-3 rounded-2xl text-sm shadow-sm",
-                            msg.role === 'user' 
-                              ? "bg-primary text-white rounded-tr-none" 
-                              : "bg-swamp-100 dark:bg-swamp-800 dark:text-swamp-200 rounded-tl-none"
-                          )}>
-                            {msg.content}
-                          </div>
-                        </div>
-                      ))}
-                      {isChatLoading && (
-                        <div className="flex justify-start">
-                          <div className="bg-swamp-100 dark:bg-swamp-800 p-3 rounded-2xl rounded-tl-none shadow-sm">
-                            <div className="flex gap-1">
-                              <div className="w-1.5 h-1.5 bg-swamp-400 rounded-full animate-bounce" />
-                              <div className="w-1.5 h-1.5 bg-swamp-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                              <div className="w-1.5 h-1.5 bg-swamp-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                  <div className="p-4 border-t dark:border-swamp-800">
-                    <form onSubmit={askMemory} className="flex gap-2">
-                      <Input 
-                        placeholder="Спросить у памяти..." 
-                        className="dark:bg-swamp-800 dark:border-swamp-700"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        disabled={isChatLoading}
-                      />
-                      <Button type="submit" disabled={isChatLoading || !chatInput.trim()}>
-                        <Send className="w-4 h-4" />
-                      </Button>
-                    </form>
-                  </div>
-                </CardContent>
-              </Card>
             </TabsContent>
           </Tabs>
         </div>
