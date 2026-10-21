@@ -73,39 +73,17 @@ import {
   Tag as TagIcon,
   BrainCircuit,
   Pencil,
+  Copy,
+  ListTodo,
   Repeat
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { format, addDays, startOfToday, isSameDay, eachDayOfInterval, isToday, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { type Subtask, type Task, isTaskOnDate, isTaskCompletedOnDate, missedDates } from './lib/tasks';
 
 // --- Types ---
-
-interface Subtask {
-  title: string;
-  done: boolean;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  status: 'todo' | 'in-progress' | 'done';
-  priority: 'low' | 'medium' | 'high';
-  userId: string;
-  createdAt: Timestamp;
-  dueDate?: Timestamp | null;
-  dueDates?: Timestamp[];
-  recurrence?: {
-    type: 'none' | 'daily' | 'weekly' | 'monthly';
-    daysOfWeek?: number[];
-  } | null;
-  completedDates?: string[];
-  tags?: string[];
-  subtasks?: Subtask[];
-  workspace?: 'work' | 'personal';
-}
 
 interface Algorithm {
   id: string;
@@ -124,6 +102,21 @@ interface Note {
   createdAt: Timestamp;
   workspace?: 'work' | 'personal';
 }
+
+const emptyTaskForm = () => ({
+  title: '',
+  description: '',
+  dueDate: undefined as Date | undefined,
+  dueDates: [] as Date[],
+  dateMode: 'single' as 'single' | 'multiple' | 'routine',
+  recurrenceType: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
+  recurrenceDays: [] as number[], // [0-6] where 0 is Sunday, 1 is Monday...
+  recurrenceDayOfMonth: new Date().getDate(),
+  dueTime: '12:00',
+  priority: 'medium' as 'low' | 'medium' | 'high',
+  tags: [] as string[],
+  subtasks: [] as Subtask[]
+});
 
 // --- Error Boundary ---
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
@@ -236,19 +229,9 @@ function App() {
   
   // Form states
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [taskForm, setTaskForm] = useState({
-    title: '',
-    description: '',
-    dueDate: undefined as Date | undefined,
-    dueDates: [] as Date[],
-    dateMode: 'single' as 'single' | 'multiple' | 'routine',
-    recurrenceType: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
-    recurrenceDays: [] as number[], // [0-6] where 0 is Sunday, 1 is Monday...
-    dueTime: '12:00',
-    priority: 'medium' as 'low' | 'medium' | 'high',
-    tags: [] as string[],
-    subtasks: [] as Subtask[]
-  });
+  // Set when the open task form came from a note; the note is deleted once the task is saved
+  const [convertingNoteId, setConvertingNoteId] = useState<string | null>(null);
+  const [taskForm, setTaskForm] = useState(emptyTaskForm);
   
   const [newAlgoTitle, setNewAlgoTitle] = useState('');
   const [newAlgoContent, setNewAlgoContent] = useState('');
@@ -361,58 +344,6 @@ function App() {
 
   // --- CRUD Actions ---
 
-  const isTaskOnDate = (task: Task, date: Date) => {
-    // 1. Check custom list of dates
-    if (task.dueDates && task.dueDates.length > 0) {
-      return task.dueDates.some(ts => isSameDay(ts.toDate(), date));
-    }
-    
-    // 2. Check recurrence
-    if (task.recurrence && task.recurrence.type && task.recurrence.type !== 'none') {
-      const type = task.recurrence.type;
-      
-      const creationDate = task.createdAt ? task.createdAt.toDate() : new Date();
-      const testDateStart = new Date(date);
-      testDateStart.setHours(23, 59, 59, 999);
-      if (testDateStart < creationDate) {
-        return false;
-      }
-      
-      if (type === 'daily') {
-        return true;
-      }
-      if (type === 'weekly') {
-        const dayOfWeek = date.getDay();
-        if (task.recurrence.daysOfWeek && task.recurrence.daysOfWeek.length > 0) {
-          return task.recurrence.daysOfWeek.includes(dayOfWeek);
-        }
-        const baseDate = task.dueDate ? task.dueDate.toDate() : creationDate;
-        return baseDate.getDay() === dayOfWeek;
-      }
-      if (type === 'monthly') {
-        const baseDate = task.dueDate ? task.dueDate.toDate() : creationDate;
-        return baseDate.getDate() === date.getDate();
-      }
-    }
-
-    // 3. Check single dueDate
-    if (task.dueDate) {
-      return isSameDay(task.dueDate.toDate(), date);
-    }
-
-    // 4. If no dates are set, show only on today
-    return isSameDay(date, startOfToday());
-  };
-
-  const isTaskCompletedOnDate = (task: Task, date: Date) => {
-    const isRecurringOrMulti = !!(task.recurrence && task.recurrence.type !== 'none') || !!(task.dueDates && task.dueDates.length > 0);
-    if (isRecurringOrMulti) {
-      const dateStr = format(date, 'yyyy-MM-dd');
-      return !!(task.completedDates && task.completedDates.includes(dateStr));
-    }
-    return task.status === 'done';
-  };
-
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.title.trim() || !activeUid) return;
@@ -448,6 +379,8 @@ function App() {
         finalRecurrence = {
           type: taskForm.recurrenceType,
           daysOfWeek: taskForm.recurrenceType === 'weekly' ? taskForm.recurrenceDays : [],
+          ...(taskForm.recurrenceType === 'monthly' && { dayOfMonth: taskForm.recurrenceDayOfMonth }),
+          time: taskForm.dueTime,
         };
       }
 
@@ -472,30 +405,21 @@ function App() {
           createdAt: serverTimestamp(),
           workspace: activeWorkspace,
         });
+        if (convertingNoteId) await deleteDoc(doc(db, 'notes', convertingNoteId));
       }
-      setTaskForm({ 
-        title: '', 
-        description: '', 
-        dueDate: undefined, 
-        dueDates: [],
-        dateMode: 'single',
-        recurrenceType: 'none',
-        recurrenceDays: [],
-        dueTime: '12:00', 
-        priority: 'medium', 
-        tags: [], 
-        subtasks: [] 
-      });
+      setTaskForm(emptyTaskForm());
       setEditingTaskId(null);
+      setConvertingNoteId(null);
       setIsTaskModalOpen(false);
     } catch (error) {
       handleFirestoreError(error, editingTaskId ? 'UPDATE' : 'WRITE', 'tasks');
     }
   };
 
-  const startEditingTask = (task: Task) => {
+  // asCopy opens the same form but saves a new task (for "Дублировать")
+  const startEditingTask = (task: Task, asCopy = false) => {
     let dDate: Date | undefined = undefined;
-    let dTime = '12:00';
+    let dTime = task.recurrence?.time || '12:00';
     if (task.dueDate) {
       dDate = task.dueDate.toDate();
       dTime = format(dDate, 'HH:mm');
@@ -513,12 +437,21 @@ function App() {
       dateMode: dMode,
       recurrenceType: task.recurrence?.type || 'none',
       recurrenceDays: task.recurrence?.daysOfWeek || [],
+      recurrenceDayOfMonth: task.recurrence?.dayOfMonth || (dDate ?? task.createdAt?.toDate() ?? new Date()).getDate(),
       dueTime: dTime,
       priority: task.priority,
       tags: task.tags || [],
       subtasks: task.subtasks || []
     });
-    setEditingTaskId(task.id);
+    setEditingTaskId(asCopy ? null : task.id);
+    setIsTaskModalOpen(true);
+  };
+
+  // Opens the new-task form prefilled from a note; a long note keeps its full text in the description
+  const startNoteToTask = (note: Note) => {
+    setTaskForm({ ...emptyTaskForm(), title: note.content.slice(0, 200), description: note.content.length > 200 ? note.content : '' });
+    setConvertingNoteId(note.id);
+    setActiveTab('tasks');
     setIsTaskModalOpen(true);
   };
 
@@ -606,6 +539,10 @@ function App() {
       return matchesSearch && matchesDate;
     });
   }, [tasks, selectedDate, searchQuery]);
+
+  const missedTasks = useMemo(() => tasks
+    .map(task => ({ task, dates: missedDates(task) }))
+    .filter(m => m.dates.length > 0), [tasks]);
 
   const upcomingTasks = useMemo(() => {
     const today = startOfToday();
@@ -785,11 +722,16 @@ function App() {
               <ScrollArea className="h-[200px] lg:h-[300px]">
                 <div className="space-y-2 pr-3">
                   {notes.map(note => (
-                    <div key={note.id} className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs border border-amber-100 dark:border-amber-900/30 dark:text-amber-200 group relative">
+                    <div key={note.id} className="p-2 pr-12 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs border border-amber-100 dark:border-amber-900/30 dark:text-amber-200 group relative">
                       {note.content}
-                      <button onClick={() => deleteDoc(doc(db, 'notes', note.id))} className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-amber-400 hover:text-red-500">
-                        <X className="w-3 h-3" />
-                      </button>
+                      <div className="absolute top-1 right-1 flex gap-1.5 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 focus-within:opacity-100">
+                        <button onClick={() => startNoteToTask(note)} className="text-amber-500 hover:text-primary" aria-label="Сделать задачей" title="Сделать задачей">
+                          <ListTodo className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => deleteDoc(doc(db, 'notes', note.id))} className="text-amber-400 hover:text-red-500" aria-label="Удалить заметку">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -811,19 +753,8 @@ function App() {
                   setIsTaskModalOpen(open);
                   if (!open) {
                     setEditingTaskId(null);
-                    setTaskForm({ 
-                      title: '', 
-                      description: '', 
-                      dueDate: undefined, 
-                      dueDates: [],
-                      dateMode: 'single',
-                      recurrenceType: 'none',
-                      recurrenceDays: [],
-                      dueTime: '12:00', 
-                      priority: 'medium', 
-                      tags: [], 
-                      subtasks: [] 
-                    });
+                    setConvertingNoteId(null);
+                    setTaskForm(emptyTaskForm());
                   }
                 }}>
                   <DialogTrigger render={<Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto overflow-hidden"><Plus className="w-4 h-4" /> Создать задачу</Button>} />
@@ -955,6 +886,20 @@ function App() {
                                 <Input type="time" className="w-full dark:bg-swamp-800 dark:border-swamp-700" value={taskForm.dueTime} onChange={(e) => setTaskForm({...taskForm, dueTime: e.target.value})} />
                               </div>
                             </div>
+
+                            {taskForm.recurrenceType === 'monthly' && (
+                              <div className="grid gap-2">
+                                <Label className="dark:text-swamp-300 text-xs">Число месяца</Label>
+                                <select
+                                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm dark:border-swamp-700 dark:text-swamp-300"
+                                  value={taskForm.recurrenceDayOfMonth}
+                                  onChange={(e) => setTaskForm({ ...taskForm, recurrenceDayOfMonth: Number(e.target.value) })}
+                                >
+                                  {Array.from({ length: 30 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}-е</option>)}
+                                  <option value={31}>Последний день месяца</option>
+                                </select>
+                              </div>
+                            )}
 
                             {taskForm.recurrenceType === 'weekly' && (
                               <div className="grid gap-2">
@@ -1100,6 +1045,29 @@ function App() {
                 </div>
               </div>
 
+              {isToday(selectedDate) && missedTasks.length > 0 && (
+                <Card className="border-l-4 border-l-red-500 dark:bg-swamp-900 dark:border-swamp-800">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold flex items-center gap-2 text-red-600 dark:text-red-400">
+                      <AlertCircle className="w-4 h-4" /> Не сделано
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {missedTasks.map(({ task, dates }) => (
+                      <div key={task.id} className="flex items-start gap-3">
+                        <Checkbox checked={false} onCheckedChange={() => toggleTaskStatus(task, dates[0])} className="mt-0.5" aria-label={`Отметить «${task.title}» за ${format(dates[0], 'd MMMM', { locale: ru })}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium dark:text-white leading-tight">{task.title}</p>
+                          <button type="button" onClick={() => setSelectedDate(dates[0])} className="text-xs text-red-500 hover:underline">
+                            {format(dates[0], 'd MMMM', { locale: ru })}{dates.length > 1 && ` · пропусков за 2 недели: ${dates.length}`}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <h3 className="font-bold text-swamp-800 dark:text-swamp-200 flex items-center gap-2"><Circle className="w-4 h-4 text-amber-500" /> В работе</h3>
@@ -1134,7 +1102,8 @@ function App() {
                                       ? (task.recurrence.daysOfWeek && task.recurrence.daysOfWeek.length > 0 
                                           ? `Еженедельно (${task.recurrence.daysOfWeek.map(d => ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][d]).join(', ')})` 
                                           : 'Еженедельно')
-                                      : 'Ежемесячно'
+                                      : task.recurrence.dayOfMonth === 31 ? 'Ежемесячно (последний день)'
+                                      : task.recurrence.dayOfMonth ? `Ежемесячно (${task.recurrence.dayOfMonth}-го)` : 'Ежемесячно'
                                   }
                                 </span>
                               )}
@@ -1157,8 +1126,9 @@ function App() {
                             )}
                           </div>
                           <div className="flex flex-col gap-1 -mt-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-swamp-500 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditingTask(task)}><Pencil className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(db, 'tasks', task.id))}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-swamp-500 hover:text-primary pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity" onClick={() => startEditingTask(task)} aria-label="Изменить"><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-swamp-500 hover:text-primary pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity" onClick={() => startEditingTask(task, true)} aria-label="Дублировать" title="Дублировать"><Copy className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(db, 'tasks', task.id))} aria-label="Удалить"><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </CardContent>
                       </Card>
@@ -1170,14 +1140,14 @@ function App() {
                   <h3 className="font-bold text-swamp-800 dark:text-swamp-200 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500" /> Завершено</h3>
                   <div className="space-y-3">
                     {filteredTasks.filter(t => isTaskCompletedOnDate(t, selectedDate)).map(task => (
-                      <Card key={task.id} className="bg-swamp-100/50 dark:bg-swamp-900/50 border-none opacity-70">
+                      <Card key={task.id} className="group bg-swamp-100/50 dark:bg-swamp-900/50 border-none opacity-70">
                         <CardContent className="p-3 flex items-start gap-3">
                           <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task, selectedDate)} className="mt-1" />
                           <div className="flex-1 flex flex-col justify-center">
                             <span className="text-sm line-through text-muted-foreground dark:text-swamp-500">{task.title}</span>
                           </div>
                           <div className="flex items-center">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(db, 'tasks', task.id))}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(db, 'tasks', task.id))} aria-label="Удалить"><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </CardContent>
                       </Card>
