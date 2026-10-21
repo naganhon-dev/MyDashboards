@@ -8,7 +8,7 @@ import {
   addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { addDays, eachDayOfInterval, endOfWeek, format, isSameDay, isToday, startOfToday, startOfWeek } from 'date-fns';
+import { addDays, addMonths, eachDayOfInterval, endOfWeek, format, isSameDay, isToday, startOfToday, startOfWeek } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { AlertCircle, BookOpen, CalendarDays, ChevronLeft, ChevronRight, LogOut, Plus, Search, StickyNote } from 'lucide-react';
 import { db, auth } from './lib/firebase';
@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { type Task, missedDates, parseQuickAdd } from './lib/tasks';
 import { Logo, useMediaQuery, useStoredState } from './components/brand';
 import TimeGrid from './components/TimeGrid';
+import MonthGrid from './components/MonthGrid';
 import TaskDialog, { emptyTaskForm, fieldClass } from './components/TaskDialog';
 import Inbox, { type Note } from './components/Inbox';
 import KnowledgeBase, { type Algorithm } from './components/KnowledgeBase';
@@ -88,7 +89,7 @@ function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [workspace, setWorkspace] = useStoredState<Workspace>('planner.workspace', 'work');
   const [view, setView] = useStoredState<View>('planner.view', 'plan');
-  const [range, setRange] = useStoredState<'week' | 'day'>('planner.range', 'week');
+  const [range, setRange] = useStoredState<'month' | 'week' | 'day'>('planner.range', 'week');
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   const [allTasks, setAllTasks] = useState<Owned<Task>[]>([]);
@@ -281,10 +282,12 @@ function App() {
 
   // --- Derived ---
   const missed = useMemo(() => tasks.map((task) => ({ task, dates: missedDates(task) })).filter((m) => m.dates.length > 0), [tasks]);
-  const showWeek = isDesktop && range === 'week';
+  const showMonth = range === 'month';
+  const showWeek = isDesktop && range === 'week'; // phones have no room for a week, they fall back to the day
   const week = eachDayOfInterval({ start: startOfWeek(selectedDate, { weekStartsOn: 1 }), end: endOfWeek(selectedDate, { weekStartsOn: 1 }) });
   const days = showWeek ? week : [selectedDate];
-  const step = (dir: 1 | -1) => setSelectedDate((d) => addDays(d, dir * (showWeek ? 7 : 1)));
+  const step = (dir: 1 | -1) => setSelectedDate((d) => (showMonth ? addMonths(d, dir) : addDays(d, dir * (showWeek ? 7 : 1))));
+  const ranges = ([['month', 'Месяц'], ['week', 'Неделя'], ['day', 'День']] as const).filter(([r]) => isDesktop || r !== 'week');
 
   if (!isAuthReady) {
     return <div className="grid min-h-dvh place-items-center"><div className="animate-pulse"><Logo size={48} /></div></div>;
@@ -382,17 +385,16 @@ function App() {
             <header className="flex flex-wrap items-center gap-3">
               <div className="mr-auto">
                 <h1 className="font-display text-2xl font-semibold first-letter:uppercase">
-                  {showWeek ? format(selectedDate, 'LLLL yyyy', { locale: ru }) : isToday(selectedDate) ? 'Сегодня' : format(selectedDate, 'EEEE', { locale: ru })}
+                  {showWeek || showMonth ? format(selectedDate, 'LLLL yyyy', { locale: ru }) : isToday(selectedDate) ? 'Сегодня' : format(selectedDate, 'EEEE', { locale: ru })}
                 </h1>
-                {!showWeek && <p className="text-[15px] text-muted-foreground">{format(selectedDate, 'd MMMM yyyy', { locale: ru })}</p>}
+                {!showWeek && !showMonth && <p className="text-[15px] text-muted-foreground">{format(selectedDate, 'd MMMM yyyy', { locale: ru })}</p>}
               </div>
-              {isDesktop && (
-                <div className="grid grid-cols-2 gap-1 rounded-xl bg-track p-1">
-                  {([['week', 'Неделя'], ['day', 'День']] as const).map(([r, label]) => (
-                    <button key={r} onClick={() => setRange(r)} aria-pressed={range === r} className={cn('min-h-9 rounded-[9px] px-3 text-[13px] font-medium', range === r ? 'bg-paper shadow-sm' : 'text-muted-foreground')}>{label}</button>
-                  ))}
-                </div>
-              )}
+              <div className="flex gap-1 rounded-xl bg-track p-1">
+                {ranges.map(([r, label]) => {
+                  const on = range === r || (r === 'day' && !isDesktop && range === 'week');
+                  return <button key={r} onClick={() => setRange(r)} aria-pressed={on} className={cn('min-h-9 rounded-[9px] px-3 text-[13px] font-medium', on ? 'bg-paper shadow-sm' : 'text-muted-foreground')}>{label}</button>;
+                })}
+              </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => step(-1)} aria-label="Назад" className="grid size-10 place-items-center rounded-xl hover:bg-paper"><ChevronLeft className="size-5" /></button>
                 <button onClick={() => setSelectedDate(startOfToday())} className="h-10 rounded-xl border border-line-2 bg-paper px-3.5 text-[14px] font-medium hover:border-accent-2">Сегодня</button>
@@ -400,7 +402,7 @@ function App() {
               </div>
             </header>
 
-            {!showWeek && (
+            {!showWeek && !showMonth && (
               <div className="grid grid-cols-7 gap-1">
                 {week.map((d) => {
                   const selected = isSameDay(d, selectedDate);
@@ -446,7 +448,9 @@ function App() {
               </section>
             )}
 
-            <TimeGrid days={days} tasks={tasks} onToggle={toggleTask} onOpen={openTask} onCreateAt={createAt} />
+            {showMonth
+              ? <MonthGrid month={selectedDate} tasks={tasks} onOpen={openTask} onPickDay={(d) => { setSelectedDate(d); setRange('day'); }} />
+              : <TimeGrid days={days} tasks={tasks} onToggle={toggleTask} onOpen={openTask} onCreateAt={createAt} />}
           </>
         )}
 

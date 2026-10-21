@@ -8,6 +8,7 @@ import { isTaskCompletedOnDate, isTaskOnDate, taskTimeOn, type Task } from '../l
 const HOUR_PX = 52;
 const BLOCK_PX = 46;
 const ROW_PX = 26;
+const DAY_START = 7;
 
 type Props = {
   days: Date[];
@@ -75,12 +76,6 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
     return () => clearInterval(t);
   }, []);
 
-  // Open on the working part of the day: an hour before now, or 8:00
-  useEffect(() => {
-    const h = Math.max(0, (days.some((d) => isToday(d)) ? new Date().getHours() : 9) - 1);
-    scroller.current?.scrollTo({ top: h * HOUR_PX });
-  }, [days[0]?.getTime()]);
-
   const columns = days.map((day) => {
     const onDay = tasks.filter((t) => isTaskOnDate(t, day));
     const untimed = onDay.filter((t) => !taskTimeOn(t, day));
@@ -93,6 +88,17 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
     for (const x of timed) byHour.set(x.time.slice(0, 2), [...(byHour.get(x.time.slice(0, 2)) || []), x]);
     return { day, untimed, timed, byHour };
   });
+
+  // Nights are empty for most people: start at 7:00 unless a task is earlier
+  const first = Math.min(DAY_START, ...columns.flatMap((c) => c.timed.map((x) => Number(x.time.slice(0, 2)))));
+  const hours = Array.from({ length: 24 - first }, (_, i) => first + i);
+  const y = (h: number, m = 0) => (h - first + m / 60) * HOUR_PX;
+
+  // Today opens an hour before now; other days open at the top (7:00)
+  useEffect(() => {
+    const today = days.some((d) => isToday(d));
+    scroller.current?.scrollTo({ top: today ? Math.max(0, y(new Date().getHours() - 1)) : 0 });
+  }, [days[0]?.getTime()]);
 
   const gridCols = { gridTemplateColumns: `3.75rem repeat(${days.length}, minmax(0, 1fr))` };
   const hasUntimed = columns.some((c) => c.untimed.length > 0);
@@ -131,11 +137,11 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
         </div>
       </div>
 
-      <div className="relative grid" style={{ ...gridCols, height: 24 * HOUR_PX }}>
+      <div className="relative grid" style={{ ...gridCols, height: hours.length * HOUR_PX }}>
         <div className="relative">
-          {Array.from({ length: 24 }, (_, h) => (
-            <div key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-faint" style={{ top: h * HOUR_PX }}>
-              {h > 0 && `${String(h).padStart(2, '0')}:00`}
+          {hours.map((h) => (
+            <div key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-faint" style={{ top: y(h) }}>
+              {h > first && `${String(h).padStart(2, '0')}:00`}
             </div>
           ))}
         </div>
@@ -144,12 +150,12 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
             key={day.toISOString()}
             className={cn('relative cursor-pointer border-l border-line/70', isToday(day) && !single && 'bg-accent-wash/40')}
             onClick={(e) => {
-              const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-              onCreateAt(day, `${String(Math.min(23, Math.floor(y / HOUR_PX))).padStart(2, '0')}:00`);
+              const offset = e.clientY - e.currentTarget.getBoundingClientRect().top;
+              onCreateAt(day, `${String(Math.min(23, first + Math.floor(offset / HOUR_PX))).padStart(2, '0')}:00`);
             }}
           >
-            {Array.from({ length: 24 }, (_, h) => (
-              <div key={h} className="absolute inset-x-0 border-t border-line/60" style={{ top: h * HOUR_PX }} />
+            {hours.map((h) => (
+              <div key={h} className="absolute inset-x-0 border-t border-line/60" style={{ top: y(h) }} />
             ))}
             {[...byHour.values()].flatMap((group) =>
               group.map(({ task, time }, i) => {
@@ -159,15 +165,15 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
                   <div
                     key={task.id}
                     className="absolute inset-x-0 z-10 px-0.5"
-                    style={{ top: (h + m / 60) * HOUR_PX + 2 + (stacked ? i * ROW_PX : 0), height: stacked ? ROW_PX - 2 : BLOCK_PX }}
+                    style={{ top: y(h, m) + 2 + (stacked ? i * ROW_PX : 0), height: stacked ? ROW_PX - 2 : BLOCK_PX }}
                   >
                     <TaskBlock task={task} day={day} time={time} compact={stacked} onToggle={onToggle} onOpen={onOpen} />
                   </div>
                 );
               })
             )}
-            {isToday(day) && (
-              <div className="pointer-events-none absolute inset-x-0 z-10 flex items-center" style={{ top: (now.getHours() + now.getMinutes() / 60) * HOUR_PX }}>
+            {isToday(day) && now.getHours() >= first && (
+              <div className="pointer-events-none absolute inset-x-0 z-10 flex items-center" style={{ top: y(now.getHours(), now.getMinutes()) }}>
                 <span className="-ml-1 size-2 rounded-full bg-rust" />
                 <span className="h-[1.5px] flex-1 bg-rust" />
               </div>
