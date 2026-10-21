@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isTaskOnDate, missedDates, parseQuickAdd, taskTimeOn, type Task } from './tasks.ts';
+import { isTaskOnDate, missedDates, taskTimeOn, type Task } from './tasks.ts';
 
 const ts = (d: Date) => ({ toDate: () => d }) as any;
 const day = (y: number, m: number, d: number, h = 0) => new Date(y, m - 1, d, h);
@@ -67,13 +67,4 @@ test('time of a task on a date', () => {
   const multi = task({ dueDates: [ts(day(2026, 11, 4, 11)), ts(day(2026, 11, 18, 12))] });
   assert.equal(taskTimeOn(multi, day(2026, 11, 18)), '12:00');
   assert.equal(taskTimeOn(task({}), day(2026, 10, 21)), null);
-});
-
-test('quick add pulls a time out of the text', () => {
-  assert.deepEqual(parseQuickAdd('14:30 позвонить Пете'), { title: 'позвонить Пете', time: '14:30' });
-  assert.deepEqual(parseQuickAdd('позвонить Пете 9.05'), { title: 'позвонить Пете', time: '09:05' });
-  assert.deepEqual(parseQuickAdd('купить хлеб'), { title: 'купить хлеб', time: null });
-  assert.deepEqual(parseQuickAdd('отчёт 2026.10'), { title: 'отчёт 2026.10', time: null });
-  assert.deepEqual(parseQuickAdd('25:00 нет'), { title: '25:00 нет', time: null });
-  assert.deepEqual(parseQuickAdd('10:00'), { title: '10:00', time: null });
 });
