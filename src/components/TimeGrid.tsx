@@ -28,7 +28,7 @@ function Tick({ task, day, done, onToggle }: { task: Task; day: Date; done: bool
       aria-label={done ? `Вернуть «${task.title}» в работу` : `Отметить «${task.title}» выполненной`}
       className={cn(
         'grid size-[18px] shrink-0 place-items-center rounded-md border-[1.5px] transition-colors',
-        done ? 'border-accent-2 bg-accent-2 text-white' : 'border-line-2 bg-paper hover:border-accent-2'
+        done ? 'border-accent-2 bg-accent-2 text-white' : 'border-control bg-paper hover:border-accent-2'
       )}
     >
       {done && <Check className="size-3" strokeWidth={3} />}
@@ -56,7 +56,7 @@ function TaskBlock({ task, day, time, compact, wrap, onToggle, onOpen }: { task:
       <div className="min-w-0 flex-1 leading-tight">
         <div className={cn('text-[13px] font-medium', wrap ? 'line-clamp-2 break-words' : 'truncate', done && 'text-faint line-through')} title={task.title}>{task.title}</div>
         {!compact && (time || repeating) && (
-          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-faint">
+          <div className="mt-0.5 flex items-center gap-1 text-xs text-faint">
             {time}
             {repeating && <Repeat className="size-3" aria-label="Повторяется" />}
           </div>
@@ -111,7 +111,7 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
             <div />
             {days.map((day) => (
               <div key={day.toISOString()} className="flex flex-col items-center gap-0.5 py-2.5">
-                <span className={cn('text-[11px] font-medium uppercase tracking-wide', isToday(day) ? 'text-accent-text' : 'text-faint')}>
+                <span className={cn('text-xs font-medium uppercase tracking-wide', isToday(day) ? 'text-accent-text' : 'text-faint')}>
                   {format(day, 'EEEEEE', { locale: ru })}
                 </span>
                 <span className={cn('grid size-8 place-items-center rounded-full font-display text-[15px] font-semibold', isToday(day) ? 'route-gradient text-white' : 'text-ink')}>
@@ -121,13 +121,13 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
             ))}
           </div>
         )}
-        <div className="grid border-t border-line/70 first:border-t-0" style={gridCols}>
-          <div className="px-1 py-2 text-right text-[10px] leading-tight text-faint">без<br />времени</div>
+        <div className="grid border-t border-line first:border-t-0" style={gridCols}>
+          <div className="px-1 py-2 text-right text-xs leading-tight text-faint">без<br />времени</div>
           {columns.map(({ day, untimed }) => (
             <div
               key={day.toISOString()}
               onClick={() => onCreateAt(day, null)}
-              className={cn('flex min-h-11 cursor-pointer flex-col gap-1 border-l border-line/70 p-1 hover:bg-track/60', !hasUntimed && 'min-h-9')}
+              className={cn('flex min-h-11 cursor-pointer flex-col gap-1 border-l border-line p-1 hover:bg-track/60', !hasUntimed && 'min-h-9')}
             >
               {untimed.map((t) => (
                 <TaskBlock key={t.id} task={t} day={day} time={null} compact wrap onToggle={onToggle} onOpen={onOpen} />
@@ -140,7 +140,7 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
       <div className="relative grid" style={{ ...gridCols, height: hours.length * HOUR_PX }}>
         <div className="relative">
           {hours.map((h) => (
-            <div key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-faint" style={{ top: y(h) }}>
+            <div key={h} className="absolute right-2 -translate-y-1/2 text-xs text-faint" style={{ top: y(h) }}>
               {h > first && `${String(h).padStart(2, '0')}:00`}
             </div>
           ))}
@@ -148,14 +148,14 @@ export default function TimeGrid({ days, tasks, onToggle, onOpen, onCreateAt }: 
         {columns.map(({ day, byHour }) => (
           <div
             key={day.toISOString()}
-            className={cn('relative cursor-pointer border-l border-line/70', isToday(day) && !single && 'bg-accent-wash/40')}
+            className={cn('relative cursor-pointer border-l border-line', isToday(day) && !single && 'bg-accent-wash/60')}
             onClick={(e) => {
               const offset = e.clientY - e.currentTarget.getBoundingClientRect().top;
               onCreateAt(day, `${String(Math.min(23, first + Math.floor(offset / HOUR_PX))).padStart(2, '0')}:00`);
             }}
           >
             {hours.map((h) => (
-              <div key={h} className="absolute inset-x-0 border-t border-line/60" style={{ top: y(h) }} />
+              <div key={h} className="absolute inset-x-0 border-t border-line" style={{ top: y(h) }} />
             ))}
             {[...byHour.values()].flatMap((group) =>
               group.map(({ task, time }, i) => {

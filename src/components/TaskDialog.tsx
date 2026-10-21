@@ -24,7 +24,7 @@ export const emptyTaskForm = () => ({
 });
 export type TaskForm = ReturnType<typeof emptyTaskForm>;
 
-export const fieldClass = 'h-11 w-full rounded-xl border border-line-2 bg-paper px-3 text-[15px] outline-none transition focus:border-accent-2 focus:ring-3 focus:ring-accent-2/15';
+export const fieldClass = 'h-11 w-full rounded-xl border border-control bg-paper px-3 text-[15px] outline-none transition focus:border-accent-2 focus:ring-3 focus:ring-accent-2/15';
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -103,7 +103,7 @@ export default function TaskDialog({ open, onOpenChange, form, setForm, isEditin
           <textarea
             placeholder="Заметки к задаче"
             maxLength={2000}
-            className="min-h-[72px] w-full resize-y rounded-xl border border-line-2 bg-paper p-3 text-[15px] outline-none focus:border-accent-2"
+            className="min-h-[72px] w-full resize-y rounded-xl border border-control bg-paper p-3 text-[15px] outline-none focus:border-accent-2"
             value={form.description}
             onChange={(e) => set({ description: e.target.value })}
           />

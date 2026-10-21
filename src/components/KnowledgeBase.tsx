@@ -24,7 +24,7 @@ function Editor({ initial, onCancel, onSave }: { initial?: Algorithm; onCancel: 
       className="card flex flex-col gap-3 p-5"
     >
       <input autoFocus required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название, например «Выдача бонусов ТО»" className={fieldClass} />
-      <textarea required maxLength={10000} value={content} onChange={(e) => setContent(e.target.value)} placeholder={'Шаги по порядку. Поддерживается Markdown:\n1. Первый шаг\n2. Второй шаг'} className="min-h-[220px] w-full resize-y rounded-xl border border-line-2 bg-paper p-3 font-mono text-[14px] leading-relaxed outline-none focus:border-accent-2" />
+      <textarea required maxLength={10000} value={content} onChange={(e) => setContent(e.target.value)} placeholder={'Шаги по порядку. Поддерживается Markdown:\n1. Первый шаг\n2. Второй шаг'} className="min-h-[220px] w-full resize-y rounded-xl border border-control bg-paper p-3 font-mono text-[14px] leading-relaxed outline-none focus:border-accent-2" />
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="h-11 rounded-xl px-4 text-[15px] font-medium text-ink-2 hover:bg-track">Отмена</button>
         <button type="submit" className="route-gradient h-11 rounded-xl px-5 text-[15px] font-semibold text-white">Сохранить</button>
