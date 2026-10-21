@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isTaskOnDate, missedDates, type Task } from './tasks.ts';
+import { isTaskOnDate, missedDates, parseQuickAdd, taskTimeOn, type Task } from './tasks.ts';
 
 const ts = (d: Date) => ({ toDate: () => d }) as any;
 const day = (y: number, m: number, d: number, h = 0) => new Date(y, m - 1, d, h);
@@ -57,4 +57,23 @@ test('multi-date task: only past unticked dates', () => {
 
 test('undated task is never missed', () => {
   assert.deepEqual(missedDates(task({}), today), []);
+});
+
+test('time of a task on a date', () => {
+  assert.equal(taskTimeOn(task({ dueDate: ts(day(2026, 10, 21, 14)) }), day(2026, 10, 21)), '14:00');
+  assert.equal(taskTimeOn(task({ dueDate: ts(day(2026, 10, 21)) }), day(2026, 10, 21)), null);
+  assert.equal(taskTimeOn(task({ recurrence: { type: 'weekly', daysOfWeek: [2], time: '09:30' } }), day(2026, 10, 20)), '09:30');
+  assert.equal(taskTimeOn(task({ recurrence: { type: 'daily' } }), day(2026, 10, 20)), null);
+  const multi = task({ dueDates: [ts(day(2026, 11, 4, 11)), ts(day(2026, 11, 18, 12))] });
+  assert.equal(taskTimeOn(multi, day(2026, 11, 18)), '12:00');
+  assert.equal(taskTimeOn(task({}), day(2026, 10, 21)), null);
+});
+
+test('quick add pulls a time out of the text', () => {
+  assert.deepEqual(parseQuickAdd('14:30 позвонить Пете'), { title: 'позвонить Пете', time: '14:30' });
+  assert.deepEqual(parseQuickAdd('позвонить Пете 9.05'), { title: 'позвонить Пете', time: '09:05' });
+  assert.deepEqual(parseQuickAdd('купить хлеб'), { title: 'купить хлеб', time: null });
+  assert.deepEqual(parseQuickAdd('отчёт 2026.10'), { title: 'отчёт 2026.10', time: null });
+  assert.deepEqual(parseQuickAdd('25:00 нет'), { title: '25:00 нет', time: null });
+  assert.deepEqual(parseQuickAdd('10:00'), { title: '10:00', time: null });
 });
