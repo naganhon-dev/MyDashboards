@@ -1,8 +1,7 @@
 {
+  "regions": ["fra1"],
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/:path*", "destination": "/api/router?__path=:path*" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
