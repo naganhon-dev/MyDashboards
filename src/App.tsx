@@ -14,7 +14,8 @@ import { AlertCircle, BookOpen, CalendarDays, Flag, ChevronLeft, ChevronRight, L
 import { db, auth } from './lib/firebase';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { type Task, missedDates, parseQuickAdd } from './lib/tasks';
+import { type Task, missedDates } from './lib/tasks';
+import { bumpCohort, parseQuickAdd, type QuickAdd as Parsed } from './lib/quickadd';
 import { Logo, useMediaQuery, useStoredState } from './components/brand';
 import TimeGrid from './components/TimeGrid';
 import MonthGrid from './components/MonthGrid';
@@ -248,10 +249,11 @@ function App() {
 
   const quickAdd = async (text: string) => {
     if (!user) return false;
-    const { title, time } = parseQuickAdd(text);
+    const { title, time, date, recurrence } = parseQuickAdd(text);
     return tryWrite(() => addDoc(collection(db, 'tasks'), {
       title: title.slice(0, 200), description: '', priority: 'medium', tags: [], subtasks: [],
-      dueDate: withTime(selectedDate, time || ''), dueDates: [], recurrence: null,
+      // A routine has no single date; otherwise the parsed date wins over the day on screen
+      dueDate: recurrence ? null : withTime(date ?? selectedDate, time || ''), dueDates: [], recurrence,
       status: 'todo', userId: user.uid, createdAt: serverTimestamp(), workspace,
     }));
   };
@@ -484,7 +486,7 @@ function App() {
         isEditing={!!editingTaskId}
         onSubmit={saveTask}
         // Same form becomes a new task; completed dates are not part of the form, so the copy starts clean
-        onDuplicate={() => setEditingTaskId(null)}
+        onDuplicate={() => { setEditingTaskId(null); setTaskForm({ ...taskForm, title: bumpCohort(taskForm.title) }); }}
         onDelete={() => {
           const task = allTasks.find((t) => t.id === editingTaskId);
           closeTaskDialog();
@@ -504,15 +506,29 @@ function App() {
   );
 }
 
+const WEEKDAY_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+
+/** What a quick-add line will turn into, shown before Enter */
+const describe = (p: Parsed, fallback: Date) => {
+  const r = p.recurrence;
+  const when = r
+    ? r.type === 'daily' ? 'Каждый день'
+      : r.type === 'weekly' ? `Каждый ${[...(r.daysOfWeek || [])].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WEEKDAY_SHORT[d]).join(', ')}`
+      : r.dayOfMonth === 31 ? 'Последний день месяца' : `Каждое ${r.dayOfMonth}-е число`
+    : format(p.date ?? fallback, 'EEEEEE, d MMMM', { locale: ru });
+  return [when, p.time].filter(Boolean).join(' · ');
+};
+
 function QuickAdd({ inputRef, date, onAdd, onMore }: { inputRef: React.RefObject<HTMLInputElement | null>; date: Date; onAdd: (text: string) => Promise<boolean>; onMore: () => void }) {
   const [text, setText] = useState('');
+  const parsed = text.trim() ? parseQuickAdd(text) : null;
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
         if (text.trim() && (await onAdd(text))) setText('');
       }}
-      className="card flex items-center gap-2 p-2 pl-4"
+      className="card flex flex-wrap items-center gap-x-2 p-2 pl-4"
     >
       <Plus className="size-5 shrink-0 text-accent-text" />
       <input
@@ -521,10 +537,18 @@ function QuickAdd({ inputRef, date, onAdd, onMore }: { inputRef: React.RefObject
         onChange={(e) => setText(e.target.value)}
         maxLength={220}
         aria-label={`Новая задача на ${format(date, 'd MMMM', { locale: ru })}`}
-        placeholder={`Задача на ${isToday(date) ? 'сегодня' : format(date, 'd MMMM', { locale: ru })} — «14:30 созвон»`}
+        placeholder={`Задача на ${isToday(date) ? 'сегодня' : format(date, 'd MMMM', { locale: ru })} — «завтра 10:00 созвон», «каждый вт отзывы»`}
         className="h-10 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-faint"
       />
       <button type="button" onClick={onMore} className="h-10 shrink-0 rounded-xl px-3 text-[13px] font-medium text-muted-foreground hover:bg-track hover:text-ink">Подробнее</button>
+      {parsed && (
+        <p aria-live="polite" className="flex w-full flex-wrap items-center gap-1.5 pb-1 pl-7 pt-0.5 text-[13px]">
+          <span className="font-medium text-ink">{parsed.title}</span>
+          <span className="text-faint">→</span>
+          <span className="rounded-md bg-accent-wash px-1.5 py-0.5 font-medium text-accent-text">{describe(parsed, date)}</span>
+          {parsed.matched.length > 0 && <span className="text-faint">понял: {parsed.matched.map((m) => `«${m}»`).join(', ')}</span>}
+        </p>
+      )}
     </form>
   );
 }
